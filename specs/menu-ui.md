@@ -29,6 +29,7 @@ Menu bar user interface and command surface for helper control.
 - Do not move monitoring/restore logic into UI process.
 - Do not add per-app restore policy UI in v1.
 - Do not reintroduce persistent Dock presence for menu app targets.
+- Do not use `.menuBarExtraStyle(.window)` or custom `NSPopover`/`NSPanel`/`NSWindow` menu shells.
 - Do not show a dedicated OneNote unsupported row/message in the menu UI.
 
 ## Component Acceptance Checks
