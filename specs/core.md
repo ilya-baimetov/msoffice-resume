@@ -23,7 +23,7 @@ Shared business logic and contracts used by helper and menu UI.
 3. Compute restore plans with dedupe + one-shot markers.
 4. Implement Office adapter scripting boundaries.
 5. Implement entitlement provider abstractions and channel-aware provider factory.
-6. Maintain XPC DTO encoding/decoding compatibility.
+6. Maintain XPC DTO encoding/decoding compatibility and shared IPC fallback compatibility.
 
 ## Adapter Requirements
 - W/E/P fetch document list using AppleScript.
@@ -47,3 +47,4 @@ Shared business logic and contracts used by helper and menu UI.
 - Storage path selection is deterministic per channel.
 - Unsaved force-save path only stores artifacts that actually exist.
 - XPC status DTO changes are reflected in menu UI consumers.
+- Shared IPC status file write/read path works for helper/menu process boundary.

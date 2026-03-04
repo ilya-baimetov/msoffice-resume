@@ -17,6 +17,9 @@ This file defines cross-component interfaces and invariants.
 - `EntitlementState`: isActive, plan, validUntil, trialEndsAt, lastValidatedAt
 
 ## XPC Contract (Menu <-> Helper)
+- Transport:
+  - preferred: XPC request/reply for status + commands
+  - required fallback: shared IPC status file + distributed command notifications
 - `getStatus()`
 - `setPaused(Bool)`
 - `restoreNow(app?)`

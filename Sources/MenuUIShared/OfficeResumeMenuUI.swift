@@ -125,6 +125,10 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         }
         RuntimeConfiguration.setDistributionChannel(channel)
         HelperLauncher.ensureHelperRunning()
+        if let cachedStatus = DaemonSharedIPC.loadStatus() {
+            status = cachedStatus
+            connectionOK = isHelperProcessRunning()
+        }
         startStatusRefreshTimer()
         started = true
     }
@@ -141,7 +145,14 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     self.consecutiveStatusFailures = 0
                 case .failure:
                     self.consecutiveStatusFailures += 1
-                    if !self.connectionOK || self.consecutiveStatusFailures >= 3 {
+                    if let fallbackStatus = DaemonSharedIPC.loadStatus() {
+                        self.status = fallbackStatus
+                        self.connectionOK = self.isHelperProcessRunning()
+                        if self.connectionOK {
+                            self.startupRetryCount = 0
+                            return
+                        }
+                    } else if !self.connectionOK || self.consecutiveStatusFailures >= 3 {
                         self.connectionOK = false
                     }
                     self.retryStartupIfNeeded()
@@ -151,25 +162,37 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     }
 
     func setPaused(_ paused: Bool) {
-        client.setPaused(paused) { [weak self] _ in
+        client.setPaused(paused) { [weak self] result in
             Task { @MainActor in
-                self?.reloadStatus()
+                guard let self else { return }
+                if case .failure = result {
+                    DaemonSharedIPC.postSetPaused(paused)
+                }
+                self.reloadStatus()
             }
         }
     }
 
     func restoreNow() {
-        client.restoreNow(app: nil) { [weak self] _ in
+        client.restoreNow(app: nil) { [weak self] result in
             Task { @MainActor in
-                self?.reloadStatus()
+                guard let self else { return }
+                if case .failure = result {
+                    DaemonSharedIPC.postRestoreNow(app: nil)
+                }
+                self.reloadStatus()
             }
         }
     }
 
     func clearSnapshot() {
-        client.clearSnapshot(app: nil) { [weak self] _ in
+        client.clearSnapshot(app: nil) { [weak self] result in
             Task { @MainActor in
-                self?.reloadStatus()
+                guard let self else { return }
+                if case .failure = result {
+                    DaemonSharedIPC.postClearSnapshot(app: nil)
+                }
+                self.reloadStatus()
             }
         }
     }
@@ -197,7 +220,9 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     private func startStatusRefreshTimer() {
         statusRefreshTimer?.invalidate()
         statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.reloadStatus()
+            Task { @MainActor in
+                self?.reloadStatus()
+            }
         }
     }
 
@@ -215,5 +240,9 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             self?.reloadStatus()
         }
+    }
+
+    private func isHelperProcessRunning() -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: HelperLauncher.helperBundleIdentifier).isEmpty
     }
 }

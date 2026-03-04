@@ -2,6 +2,29 @@ import XCTest
 @testable import OfficeResumeCore
 
 final class OfficeResumeCoreTests: XCTestCase {
+    func testDaemonSharedIPCStatusRoundTrip() throws {
+        let status = DaemonStatusDTO(
+            isPaused: false,
+            helperRunning: true,
+            entitlementActive: true,
+            entitlementPlan: .yearly,
+            entitlementValidUntil: Date(timeIntervalSince1970: 1_800_000_000),
+            entitlementTrialEndsAt: nil,
+            accessibilityTrusted: true,
+            latestSnapshotCapturedAt: [.word: Date(timeIntervalSince1970: 1_700_000_000)],
+            unsupportedApps: [.onenote]
+        )
+
+        DaemonSharedIPC.publishStatus(status)
+        defer { DaemonSharedIPC.clearStatus() }
+
+        let loaded = DaemonSharedIPC.loadStatus()
+        XCTAssertNotNil(loaded)
+        XCTAssertEqual(loaded?.helperRunning, true)
+        XCTAssertEqual(loaded?.accessibilityTrusted, true)
+        XCTAssertEqual(loaded?.entitlementPlan, .yearly)
+    }
+
     func testDaemonStatusRoundTripIncludesAccessibilityState() throws {
         let status = DaemonStatusDTO(
             isPaused: false,

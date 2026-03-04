@@ -20,7 +20,8 @@ Menu bar user interface and command surface for helper control.
    - `Advanced > Clear Snapshot`
    - `Advanced > Open Debug Log in Console`
    - `Quit`
-5. Initialize distribution channel marker for helper/core selection.
+5. Use XPC for helper commands/status when available; fall back to shared IPC status + distributed command notifications.
+6. Initialize distribution channel marker for helper/core selection.
 
 ## Channel Rules
 - Direct target sets channel marker to `direct`.
@@ -35,7 +36,7 @@ Menu bar user interface and command surface for helper control.
 - Do not show a dedicated OneNote unsupported row/message in the menu UI.
 
 ## Component Acceptance Checks
-- Controls invoke corresponding XPC commands.
+- Controls invoke helper commands via XPC or fallback distributed notifications.
 - Accessibility line shows `Accessibility: OK` when trusted.
 - Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
 - `Quit` terminates helper and menu app together.

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum DaemonXPCConstants {
-    public static let machServiceName = "com.pragprod.msofficeresume.daemon"
+    public static let endpointFileName = "daemon-xpc-endpoint-v1.data"
 }
 
 public enum DaemonXPCError: Error, LocalizedError {
@@ -233,7 +233,7 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
     private let service: OfficeResumeDaemonService
 
     public init(service: OfficeResumeDaemonService = OfficeResumeDaemonService()) {
-        self.listener = NSXPCListener(machServiceName: DaemonXPCConstants.machServiceName)
+        self.listener = NSXPCListener.anonymous()
         self.service = service
         super.init()
         self.listener.delegate = self
@@ -241,6 +241,15 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
 
     public func resume() {
         listener.resume()
+    }
+
+    public func persistEndpoint() throws {
+        let data = try NSKeyedArchiver.archivedData(withRootObject: listener.endpoint, requiringSecureCoding: false)
+        try DaemonEndpointStore.writeEndpointData(data)
+    }
+
+    public func clearEndpoint() {
+        try? DaemonEndpointStore.clear()
     }
 
     public func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
@@ -346,7 +355,11 @@ public final class DaemonXPCClient {
             return connection
         }
 
-        let newConnection = NSXPCConnection(machServiceName: DaemonXPCConstants.machServiceName, options: [])
+        guard let endpoint = try DaemonEndpointStore.readEndpoint() else {
+            throw DaemonXPCError.connectionFailed
+        }
+
+        let newConnection = NSXPCConnection(listenerEndpoint: endpoint)
         newConnection.remoteObjectInterface = NSXPCInterface(with: OfficeResumeDaemonXPCProtocol.self)
         newConnection.invalidationHandler = { [weak self] in
             self?.connection = nil
@@ -388,5 +401,48 @@ public final class DaemonXPCClient {
         DispatchQueue.global().asyncAfter(deadline: .now() + requestTimeoutSeconds) {
             completion(.failure(DaemonXPCError.requestTimedOut))
         }
+    }
+}
+
+private enum DaemonEndpointStore {
+    static func writeEndpointData(_ data: Data, fileManager: FileManager = .default) throws {
+        let url = try endpointFileURL(fileManager: fileManager)
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
+
+    static func readEndpoint(fileManager: FileManager = .default) throws -> NSXPCListenerEndpoint? {
+        let url = try endpointFileURL(fileManager: fileManager)
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+
+        let data = try Data(contentsOf: url)
+        return try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? NSXPCListenerEndpoint
+    }
+
+    static func clear(fileManager: FileManager = .default) throws {
+        let url = try endpointFileURL(fileManager: fileManager)
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        try fileManager.removeItem(at: url)
+    }
+
+    private static func endpointFileURL(fileManager: FileManager) throws -> URL {
+        if let appGroupRoot = fileManager.containerURL(forSecurityApplicationGroupIdentifier: RuntimeConfiguration.appGroupIdentifier) {
+            return appGroupRoot
+                .appendingPathComponent("ipc", isDirectory: true)
+                .appendingPathComponent(DaemonXPCConstants.endpointFileName)
+        }
+
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        return appSupport
+            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+            .appendingPathComponent("ipc", isDirectory: true)
+            .appendingPathComponent(DaemonXPCConstants.endpointFileName)
     }
 }

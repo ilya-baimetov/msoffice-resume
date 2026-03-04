@@ -12,7 +12,7 @@ Background runtime that captures Office state and performs restore actions.
 2. Observe Accessibility events via `AXObserver` for running Office processes.
 3. Trigger snapshot capture on AX signals (debounced per app).
 4. Trigger auto-restore on app launch using restore engine.
-5. Expose helper control/status over XPC service.
+5. Expose helper control/status over XPC service with shared IPC fallback.
 6. Enforce entitlement and pause gating on capture/restore paths.
 
 ## Required Runtime Behavior
@@ -33,6 +33,8 @@ Background runtime that captures Office state and performs restore actions.
 - Keep helper fully headless (no visible helper UI windows).
 - Surface Accessibility trust state into daemon status.
 - Register and host XPC listener at helper startup.
+- Publish daemon status JSON to shared IPC path.
+- Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`) and route to controller handlers.
 
 ## Forbidden Changes
 - Do not perform UI logic in helper.

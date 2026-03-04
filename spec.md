@@ -333,6 +333,19 @@ No cross-channel purchase linking in v1.
 
 ## 13. XPC Contract Details
 
+### 13.0 Transport
+- Preferred control/status path: XPC (when available).
+- Required fallback path (must work in local/direct runs):
+  - helper publishes daemon status JSON to shared IPC file:
+    - app-group container path when available
+    - fallback: `~/Library/Application Support/com.pragprod.msofficeresume/ipc/daemon-status-v1.json`
+  - menu reads shared status file when XPC status fetch fails.
+  - menu posts helper commands via distributed notifications:
+    - `com.pragprod.msofficeresume.command.pause`
+    - `com.pragprod.msofficeresume.command.restore-now`
+    - `com.pragprod.msofficeresume.command.clear-snapshot`
+  - helper listens to those distributed notifications and executes the same command handlers.
+
 ### 13.1 Status DTO
 - paused flag
 - helper running flag
