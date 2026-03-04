@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - "codex/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-guardrails:
+    name: docs-guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required docs exist
+        run: |
+          set -euo pipefail
+          test -f AGENTS.md
+          test -f PRD.md
+          test -f spec.md
+          test -f prompt.md
+
+      - name: Validate locked bundle prefix
+        run: |
+          set -euo pipefail
+          rg -n "com\.pragprod\.msofficeresume" AGENTS.md
+
+  build-test-mas:
+    name: build-test-mas
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover workspace or project
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(find . -maxdepth 4 -name '*.xcworkspace' -print -quit)"
+          project="$(find . -maxdepth 4 -name '*.xcodeproj' -print -quit)"
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if Xcode project is not scaffolded yet
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project == '' }}
+        run: echo "No Xcode workspace/project found yet. Skipping MAS build/test for now."
+
+      - name: Verify MAS scheme exists (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -list -workspace "${{ steps.discover.outputs.workspace }}" > /tmp/xcode-list-mas.txt
+          rg -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
+
+      - name: Verify MAS scheme exists (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-mas.txt
+          rg -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
+
+      - name: Build and test MAS scheme (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace "${{ steps.discover.outputs.workspace }}" \
+            -scheme OfficeResumeMAS \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build test
+
+      - name: Build and test MAS scheme (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${{ steps.discover.outputs.project }}" \
+            -scheme OfficeResumeMAS \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build test
+
+  build-test-direct:
+    name: build-test-direct
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover workspace or project
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(find . -maxdepth 4 -name '*.xcworkspace' -print -quit)"
+          project="$(find . -maxdepth 4 -name '*.xcodeproj' -print -quit)"
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if Xcode project is not scaffolded yet
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project == '' }}
+        run: echo "No Xcode workspace/project found yet. Skipping Direct build/test for now."
+
+      - name: Verify Direct scheme exists (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -list -workspace "${{ steps.discover.outputs.workspace }}" > /tmp/xcode-list-direct.txt
+          rg -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
+
+      - name: Verify Direct scheme exists (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-direct.txt
+          rg -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
+
+      - name: Build and test Direct scheme (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace "${{ steps.discover.outputs.workspace }}" \
+            -scheme OfficeResumeDirect \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build test
+
+      - name: Build and test Direct scheme (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${{ steps.discover.outputs.project }}" \
+            -scheme OfficeResumeDirect \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build test
+
+  backend-tests:
+    name: backend-tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Skip if backend package is not scaffolded yet
+        if: ${{ !hashFiles('OfficeResumeBackend/package.json') }}
+        run: echo "No OfficeResumeBackend/package.json found yet. Skipping backend tests."
+
+      - name: Install dependencies
+        if: ${{ hashFiles('OfficeResumeBackend/package.json') }}
+        working-directory: OfficeResumeBackend
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Run backend tests
+        if: ${{ hashFiles('OfficeResumeBackend/package.json') }}
+        working-directory: OfficeResumeBackend
+        run: npm test
