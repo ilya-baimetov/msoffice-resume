@@ -80,6 +80,36 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertNil(secondPlan)
     }
 
+    func testRestoreEngineIgnoresPlaceholderCanonicalPaths() async throws {
+        let tempRoot = makeTempDirectory(name: "restore-engine-placeholder")
+        let snapshotStore = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let markerURL = tempRoot.appendingPathComponent("restore-markers.json")
+        let markerStore = try FileRestoreMarkerStore(markerFileURL: markerURL)
+        let engine = RestoreEngine(snapshotStore: snapshotStore, markerStore: markerStore)
+
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "previous-launch",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Bad", canonicalPath: "missing value", isSaved: true, isTempArtifact: false, capturedAt: now),
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: " /tmp/demo.pptx ", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+        try await snapshotStore.saveSnapshot(snapshot)
+
+        let plan = try await engine.buildPlan(
+            for: .powerpoint,
+            launchInstanceID: "new-launch",
+            currentlyOpenDocuments: []
+        )
+
+        XCTAssertEqual(plan?.documentsToOpen.map(\.canonicalPath), ["/tmp/demo.pptx"])
+    }
+
     func testFileSnapshotStoreRoundTripAndEvents() async throws {
         let tempRoot = makeTempDirectory(name: "snapshot-store")
         let store = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
@@ -293,6 +323,158 @@ final class OfficeResumeCoreTests: XCTestCase {
 
         let index = try await store.loadUnsavedIndex(for: .word)
         XCTAssertEqual(index.artifacts.count, 1)
+    }
+
+    func testRestoreSkipsPlaceholderPathsAndNormalizesWhitespace() async throws {
+        var executedScripts: [String] = []
+        let executor = MockScriptExecutor { script in
+            executedScripts.append(script)
+            return "ok"
+        }
+
+        let adapter = AppleScriptOfficeAdapter(app: .powerpoint, scriptExecutor: executor, snapshotStore: nil)
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-restore",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Bad", canonicalPath: "missing value", isSaved: true, isTempArtifact: false, capturedAt: now),
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck 1", canonicalPath: "  /tmp/deck1.pptx  ", isSaved: true, isTempArtifact: false, capturedAt: now),
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck 2", canonicalPath: "https://example.com/deck2.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, ["/tmp/deck1.pptx", "https://example.com/deck2.pptx"])
+
+        let openScripts = executedScripts.filter { $0.contains(" to open ") }
+        XCTAssertEqual(openScripts.count, 2)
+    }
+
+    func testRestoreRetriesTransientOpenFailure() async throws {
+        var openAttempts = 0
+        let executor = MockScriptExecutor { script in
+            if script.contains(" to open ") {
+                openAttempts += 1
+                if openAttempts < 3 {
+                    throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "not ready"])
+                }
+            }
+            return "ok"
+        }
+
+        let adapter = AppleScriptOfficeAdapter(app: .powerpoint, scriptExecutor: executor, snapshotStore: nil)
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-retry",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: "/tmp/retry.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, ["/tmp/retry.pptx"])
+        XCTAssertEqual(openAttempts, 3)
+    }
+
+    func testPowerPointURLRestoreUsesOpenStringCommandWhenNoLocalMapping() async throws {
+        var executedScripts: [String] = []
+        let executor = MockScriptExecutor { script in
+            executedScripts.append(script)
+            return "ok"
+        }
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .powerpoint,
+            scriptExecutor: executor,
+            snapshotStore: nil,
+            cloudStorageRootsProvider: { [] }
+        )
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-url",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(
+                    app: .powerpoint,
+                    displayName: "Cloud Deck",
+                    canonicalPath: "https://d.docs.live.net/1234/Deck.pptx",
+                    isSaved: true,
+                    isTempArtifact: false,
+                    capturedAt: now
+                ),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+
+        _ = try await adapter.restore(snapshot: snapshot)
+        guard let openScript = executedScripts.first(where: { $0.contains(" to open ") }) else {
+            XCTFail("Expected an open script")
+            return
+        }
+        XCTAssertTrue(openScript.contains(" to open \"https://d.docs.live.net/1234/Deck.pptx\""))
+        XCTAssertFalse(openScript.contains("open location"))
+    }
+
+    func testPowerPointDocsLiveURLRestoreUsesLocalOneDrivePathWhenAvailable() async throws {
+        var executedScripts: [String] = []
+        let executor = MockScriptExecutor { script in
+            executedScripts.append(script)
+            return "ok"
+        }
+
+        let root = makeTempDirectory(name: "onedrive-root")
+            .appendingPathComponent("OneDrive-Personal", isDirectory: true)
+        let localDeck = root
+            .appendingPathComponent("Projects", isDirectory: true)
+            .appendingPathComponent("Sber", isDirectory: true)
+            .appendingPathComponent("Deck.pptx")
+        try FileManager.default.createDirectory(at: localDeck.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("deck".utf8).write(to: localDeck)
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .powerpoint,
+            scriptExecutor: executor,
+            snapshotStore: nil,
+            cloudStorageRootsProvider: { [root] }
+        )
+
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-url-local",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(
+                    app: .powerpoint,
+                    displayName: "Deck",
+                    canonicalPath: "https://d.docs.live.net/1234/Projects/Sber/Deck.pptx",
+                    isSaved: true,
+                    isTempArtifact: false,
+                    capturedAt: now
+                ),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+
+        _ = try await adapter.restore(snapshot: snapshot)
+        guard let openScript = executedScripts.first(where: { $0.contains(" to open ") }) else {
+            XCTFail("Expected an open script")
+            return
+        }
+        XCTAssertTrue(openScript.contains("open POSIX file \"\(localDeck.path)\""))
     }
 
     private func makeDocument(path: String, app: OfficeApp = .word) -> DocumentSnapshot {

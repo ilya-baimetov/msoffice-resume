@@ -133,22 +133,46 @@ public actor RestoreEngine {
         _ snapshotDocuments: [DocumentSnapshot],
         currentlyOpenDocuments: [DocumentSnapshot]
     ) -> [DocumentSnapshot] {
-        let openPaths = Set(currentlyOpenDocuments.map(\.canonicalPath))
+        let openPaths = Set(
+            currentlyOpenDocuments
+                .map(\.canonicalPath)
+                .map(normalizedCanonicalPath)
+                .filter { !$0.isEmpty }
+        )
         var seen: Set<String> = []
         var output: [DocumentSnapshot] = []
 
         for doc in snapshotDocuments {
-            guard !doc.canonicalPath.isEmpty else {
+            let normalizedPath = normalizedCanonicalPath(doc.canonicalPath)
+            guard !normalizedPath.isEmpty else {
                 continue
             }
-            guard !openPaths.contains(doc.canonicalPath) else {
+            guard !openPaths.contains(normalizedPath) else {
                 continue
             }
-            if seen.insert(doc.canonicalPath).inserted {
-                output.append(doc)
+            if seen.insert(normalizedPath).inserted {
+                output.append(
+                    DocumentSnapshot(
+                        app: doc.app,
+                        displayName: doc.displayName,
+                        canonicalPath: normalizedPath,
+                        isSaved: doc.isSaved,
+                        isTempArtifact: doc.isTempArtifact,
+                        capturedAt: doc.capturedAt
+                    )
+                )
             }
         }
 
         return output
+    }
+
+    private func normalizedCanonicalPath(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        if lowered == "missing value" || lowered == "missing" || lowered == "null" || lowered == "(null)" || lowered == "<null>" {
+            return ""
+        }
+        return trimmed
     }
 }

@@ -42,17 +42,22 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
     private let scriptExecutor: ScriptExecuting
     private let snapshotStore: SnapshotStore?
     private let fileManager: FileManager
+    private let cloudStorageRootsProvider: () -> [URL]
 
     public init(
         app: OfficeApp,
         scriptExecutor: ScriptExecuting = NSAppleScriptExecutor(),
         snapshotStore: SnapshotStore? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        cloudStorageRootsProvider: (() -> [URL])? = nil
     ) {
         self.app = app
         self.scriptExecutor = scriptExecutor
         self.snapshotStore = snapshotStore
         self.fileManager = fileManager
+        self.cloudStorageRootsProvider = cloudStorageRootsProvider ?? {
+            Self.defaultCloudStorageRoots(fileManager: fileManager)
+        }
     }
 
     public func fetchState() async throws -> AppSnapshot {
@@ -114,15 +119,52 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
             var restoredPaths: [String] = []
             var failedPaths: [String] = []
 
+            if let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) {
+                _ = try? scriptExecutor.run(script: "tell application id \"\(bundleID)\" to activate")
+            }
+
             for doc in snapshot.documents {
-                guard !doc.canonicalPath.isEmpty else {
+                let path = normalizePathField(doc.canonicalPath)
+                guard isRestorablePath(path) else {
                     continue
                 }
+
+                let candidatePaths = restorePathCandidates(for: path)
+                var restored = false
+                var lastError: Error?
                 do {
-                    _ = try scriptExecutor.run(script: openDocumentScript(path: doc.canonicalPath, app: app))
-                    restoredPaths.append(doc.canonicalPath)
-                } catch {
-                    failedPaths.append(doc.canonicalPath)
+                    for candidatePath in candidatePaths {
+                        do {
+                            try await openDocumentWithRetry(path: candidatePath, app: app)
+                            restoredPaths.append(candidatePath)
+                            restored = true
+                            if candidatePath != path {
+                                DebugLog.debug(
+                                    "Resolved cloud path to local path for restore",
+                                    metadata: [
+                                        "app": app.rawValue,
+                                        "sourcePath": path,
+                                        "resolvedPath": candidatePath,
+                                    ]
+                                )
+                            }
+                            break
+                        } catch {
+                            lastError = error
+                        }
+                    }
+                }
+
+                if !restored {
+                    failedPaths.append(path)
+                    DebugLog.warning(
+                        "Document restore open failed",
+                        metadata: [
+                            "app": app.rawValue,
+                            "path": path,
+                            "error": (lastError as NSError?)?.localizedDescription ?? "Unknown restore error",
+                        ]
+                    )
                 }
             }
 
@@ -150,7 +192,8 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         }
 
         let unsavedEntries = state.documents.enumerated().filter { _, document in
-            !document.isSaved || document.canonicalPath.isEmpty
+            let normalizedPath = normalizePathField(document.canonicalPath)
+            return !document.isSaved || (normalizedPath.isEmpty && looksUntitledDocument(named: document.displayName))
         }
         guard !unsavedEntries.isEmpty else {
             return []
@@ -245,14 +288,27 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
                 continue
             }
 
-            let name = fields[0]
-            let path = fields[1]
-            let savedField = fields[2].lowercased()
-            let isSaved = savedField == "true" || savedField == "yes"
+            let name = normalizeTextField(fields[0])
+            let path = normalizePathField(fields[1])
+            let savedField = normalizeTextField(fields[2]).lowercased()
+            let isSaved: Bool
+            switch savedField {
+            case "false", "no", "0":
+                isSaved = false
+            case "true", "yes", "1":
+                isSaved = true
+            default:
+                isSaved = true
+            }
+
+            let displayName = name.isEmpty ? fallbackDisplayName(for: path) : name
+            if displayName.isEmpty && path.isEmpty {
+                continue
+            }
 
             let snapshot = DocumentSnapshot(
                 app: app,
-                displayName: name,
+                displayName: displayName,
                 canonicalPath: path,
                 isSaved: isSaved,
                 isTempArtifact: false,
@@ -295,60 +351,60 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         }
 
         return """
-        set __or_names to {}
-        set __or_paths to {}
-        set __or_saved_flags to {}
-
-        tell application id "\(bundleID)"
-            try
-                set __or_names to (name of \(collectionName)) as list
-            end try
-            try
-                set __or_paths to (full name of \(collectionName)) as list
-            end try
-            try
-                set __or_saved_flags to (saved of \(collectionName)) as list
-            end try
-        end tell
-
         set __or_output_lines to {}
-        set __or_count to (count of __or_names)
-
-        repeat with __or_index from 1 to __or_count
-            set __or_name to ""
-            set __or_path to ""
-            set __or_saved to "true"
-
+        tell application id "\(bundleID)"
+            set __or_docs to {}
             try
-                set __or_name to (item __or_index of __or_names) as string
+                set __or_docs to \(collectionName) as list
             end try
 
-            if __or_index <= (count of __or_paths) then
-                set __or_path_value to item __or_index of __or_paths
-                set __or_path_text to ""
+            repeat with __or_doc in __or_docs
+                set __or_name to ""
+                set __or_path to ""
+                set __or_saved to "true"
+                set __or_path_value to missing value
+
                 try
-                    set __or_path_text to (__or_path_value as string)
+                    set __or_name to (name of __or_doc) as string
                 end try
 
-                if (__or_path_text starts with "http://") or (__or_path_text starts with "https://") then
-                    set __or_path to __or_path_text
-                else
+                try
+                    set __or_path_value to (full name of __or_doc)
+                on error
                     try
-                        set __or_path to POSIX path of __or_path_value
-                    on error
-                        set __or_path to __or_path_text
+                        set __or_path_value to (path of __or_doc)
                     end try
-                end if
-            end if
-
-            if __or_index <= (count of __or_saved_flags) then
-                try
-                    set __or_saved to ((item __or_index of __or_saved_flags) as string)
                 end try
-            end if
 
-            set end of __or_output_lines to (__or_name & "\t" & __or_path & "\t" & __or_saved)
-        end repeat
+                if __or_path_value is not missing value then
+                    set __or_path_text to ""
+                    try
+                        set __or_path_text to (__or_path_value as string)
+                    end try
+
+                    if (__or_path_text starts with "http://") or (__or_path_text starts with "https://") then
+                        set __or_path to __or_path_text
+                    else
+                        try
+                            set __or_path to POSIX path of __or_path_value
+                        on error
+                            set __or_path to __or_path_text
+                        end try
+                    end if
+                end if
+
+                try
+                    set __or_saved_value to (saved of __or_doc)
+                    if __or_saved_value is false then
+                        set __or_saved to "false"
+                    else
+                        set __or_saved to "true"
+                    end if
+                end try
+
+                set end of __or_output_lines to (__or_name & "\t" & __or_path & "\t" & __or_saved)
+            end repeat
+        end tell
 
         set AppleScript's text item delimiters to linefeed
         set __or_output_text to __or_output_lines as string
@@ -403,9 +459,54 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         let escapedPath = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let lowerPath = path.lowercased()
         if lowerPath.hasPrefix("http://") || lowerPath.hasPrefix("https://") {
-            return "tell application id \"\(bundleID)\" to open location \"\(escapedPath)\""
+            // PowerPoint rejects `open location` for OneDrive `d.docs.live.net` links;
+            // `open "<url>"` is accepted and also works for other Office URL documents.
+            return "tell application id \"\(bundleID)\" to open \"\(escapedPath)\""
         }
         return "tell application id \"\(bundleID)\" to open POSIX file \"\(escapedPath)\""
+    }
+
+    private func restorePathCandidates(for path: String) -> [String] {
+        var ordered: [String] = []
+
+        if let localPath = resolveDocsLiveURLToLocalPath(path), isRestorablePath(localPath) {
+            ordered.append(localPath)
+        }
+
+        ordered.append(path)
+
+        var seen: Set<String> = []
+        return ordered.filter { seen.insert($0).inserted }
+    }
+
+    private func resolveDocsLiveURLToLocalPath(_ path: String) -> String? {
+        guard let url = URL(string: path),
+              let host = url.host?.lowercased(),
+              host == "d.docs.live.net"
+        else {
+            return nil
+        }
+
+        let components = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+        guard components.count >= 2 else {
+            return nil
+        }
+
+        // docs.live.net/<cid>/<relative path...>
+        let relativeComponents = components.dropFirst()
+        let decodedComponents = relativeComponents.map { component in
+            component.removingPercentEncoding ?? component
+        }
+        let relativePath = decodedComponents.joined(separator: "/")
+
+        for root in cloudStorageRootsProvider() {
+            let candidate = root.appendingPathComponent(relativePath).path
+            if fileManager.fileExists(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        return nil
     }
 
     private func forceSaveDocumentScript(for app: OfficeApp, documentIndex: Int, targetPath: String) -> String {
@@ -460,6 +561,97 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         default:
             return "tmp"
         }
+    }
+
+    private func normalizeTextField(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        if lowered == "missing value" || lowered == "missing" || lowered == "null" || lowered == "(null)" || lowered == "<null>" {
+            return ""
+        }
+        return trimmed
+    }
+
+    private func normalizePathField(_ value: String) -> String {
+        normalizeTextField(value)
+    }
+
+    private func fallbackDisplayName(for path: String) -> String {
+        guard !path.isEmpty else {
+            return ""
+        }
+        return (path as NSString).lastPathComponent
+    }
+
+    private func looksUntitledDocument(named name: String) -> Bool {
+        let lowered = normalizeTextField(name).lowercased()
+        return lowered.hasPrefix("untitled")
+            || lowered.hasPrefix("document")
+            || lowered.hasPrefix("book")
+            || lowered.hasPrefix("presentation")
+            || lowered.hasPrefix("workbook")
+    }
+
+    private func isRestorablePath(_ path: String) -> Bool {
+        guard !path.isEmpty else {
+            return false
+        }
+        let lowered = path.lowercased()
+        return lowered.hasPrefix("http://") || lowered.hasPrefix("https://") || path.hasPrefix("/")
+    }
+
+    private func openDocumentWithRetry(
+        path: String,
+        app: OfficeApp,
+        maxAttempts: Int = 5,
+        retryDelayNanoseconds: UInt64 = 250_000_000
+    ) async throws {
+        var lastError: Error?
+        for attempt in 0..<maxAttempts {
+            do {
+                _ = try scriptExecutor.run(script: openDocumentScript(path: path, app: app))
+                return
+            } catch {
+                lastError = error
+                guard attempt < maxAttempts - 1 else {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            }
+        }
+
+        if let lastError {
+            throw lastError
+        }
+        throw OfficeAdapterError.scriptExecutionFailed
+    }
+
+    private static func defaultCloudStorageRoots(fileManager: FileManager) -> [URL] {
+        var roots: [URL] = []
+
+        let cloudStorageRoot = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("CloudStorage", isDirectory: true)
+
+        if let entries = try? fileManager.contentsOfDirectory(
+            at: cloudStorageRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            for entry in entries {
+                let name = entry.lastPathComponent.lowercased()
+                if name.contains("onedrive") {
+                    roots.append(entry)
+                }
+            }
+        }
+
+        let legacyOneDrive = fileManager.homeDirectoryForCurrentUser.appendingPathComponent("OneDrive", isDirectory: true)
+        if fileManager.fileExists(atPath: legacyOneDrive.path) {
+            roots.append(legacyOneDrive)
+        }
+
+        return roots
     }
 }
 
