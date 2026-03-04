@@ -74,6 +74,13 @@ jobs:
             [[ -z "$value" || "$lowered" == "tbd" || "$lowered" == "todo" || "$lowered" == "n/a" || "$lowered" == "none" ]]
           }
 
+          has_placeholder_token() {
+            local value="$1"
+            local lowered
+            lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            [[ "$lowered" =~ (^|[^a-z])(tbd|todo|pending|wip|placeholder)([^a-z]|$) ]]
+          }
+
           if [[ -z "${PR_BODY//[$'\t\r\n ']}" ]]; then
             echo "PR body is empty. Include the PR template and fill the eval scorecard section."
             exit 1
@@ -92,6 +99,14 @@ jobs:
             echo "Copilot review URL is empty or placeholder."
             exit 1
           fi
+          if ! [[ "$copilot_url" =~ ^https:// ]]; then
+            echo "Copilot review URL must be a valid https:// link."
+            exit 1
+          fi
+          if has_placeholder_token "$copilot_url"; then
+            echo "Copilot review URL contains placeholder text."
+            exit 1
+          fi
 
           copilot_findings="$(extract_value 'Copilot high/medium findings summary:')"
           copilot_findings="$(printf '%s' "$copilot_findings" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
@@ -99,11 +114,19 @@ jobs:
             echo "Copilot findings summary is empty or placeholder."
             exit 1
           fi
+          if has_placeholder_token "$copilot_findings"; then
+            echo "Copilot findings summary contains placeholder text."
+            exit 1
+          fi
 
           copilot_disposition="$(extract_value 'Copilot disposition (fixed or explicitly accepted with reason):')"
           copilot_disposition="$(printf '%s' "$copilot_disposition" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
           if is_placeholder "$copilot_disposition"; then
             echo "Copilot disposition is empty or placeholder."
+            exit 1
+          fi
+          if has_placeholder_token "$copilot_disposition"; then
+            echo "Copilot disposition contains placeholder text."
             exit 1
           fi
 

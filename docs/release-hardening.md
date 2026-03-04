@@ -16,6 +16,7 @@ Outputs:
 - `dist/release-direct/` (staged payload with `OfficeResume.app` + `OfficeResumeHelper.app`)
 
 The package uses a stable package identifier/version and supports upgrade installs.
+It also enforces channel-conflict protection: Direct install aborts if MAS is already installed at `/Applications/OfficeResume.app`.
 
 ## 2. Sign App Bundles + Installer Package
 
@@ -102,7 +103,8 @@ Review model:
 3. MAS/Direct/helper builds and tests pass.
 4. Backend `npm run lint` and `npm test` pass.
 5. Direct pkg install and upgrade path validated.
-6. Postinstall behavior restarts/relaunches app cleanly.
-7. Free-pass allowlist works for internal accounts.
-8. Non-allowlisted accounts require trial/subscription entitlement.
-9. No remote analytics/telemetry introduced.
+6. Direct pkg blocks install with clear uninstall-first message when opposite channel is detected.
+7. Postinstall behavior restarts/relaunches app cleanly.
+8. Free-pass allowlist works for internal accounts.
+9. Non-allowlisted accounts require trial/subscription entitlement.
+10. No remote analytics/telemetry introduced.
