@@ -35,7 +35,7 @@ jobs:
       - name: Validate locked bundle prefix
         run: |
           set -euo pipefail
-          rg -n "com\.pragprod\.msofficeresume" AGENTS.md
+          grep -En "com\.pragprod\.msofficeresume" AGENTS.md
 
   build-test-mas:
     name: build-test-mas
@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -list -workspace "${{ steps.discover.outputs.workspace }}" > /tmp/xcode-list-mas.txt
-          rg -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
+          grep -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
 
       - name: Verify MAS scheme exists (project)
         if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-mas.txt
-          rg -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
+          grep -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
 
       - name: Build and test MAS scheme (workspace)
         if: ${{ steps.discover.outputs.workspace != '' }}
@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -list -workspace "${{ steps.discover.outputs.workspace }}" > /tmp/xcode-list-direct.txt
-          rg -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
+          grep -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
 
       - name: Verify Direct scheme exists (project)
         if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
@@ -133,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-direct.txt
-          rg -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
+          grep -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
 
       - name: Build and test Direct scheme (workspace)
         if: ${{ steps.discover.outputs.workspace != '' }}
