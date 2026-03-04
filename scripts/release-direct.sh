@@ -48,9 +48,8 @@ if [[ ! -d "$WORKSPACE" || "$PROJECT_YML" -nt "$PROJECT_FILE" ]]; then
   (cd "$REPO_ROOT" && xcodegen generate)
 fi
 
-mkdir -p "$BUILD_DIR"
-rm -rf "$OUT_DIR" "$UNSIGNED_PKG" "$SIGNED_PKG"
-mkdir -p "$OUT_DIR"
+rm -rf "$BUILD_DIR" "$OUT_DIR" "$UNSIGNED_PKG" "$SIGNED_PKG"
+mkdir -p "$BUILD_DIR" "$OUT_DIR"
 
 build_target() {
   local scheme="$1"
@@ -67,6 +66,32 @@ build_target() {
     build >"$log_file"
 
   echo "Built $scheme ($CONFIGURATION). Log: $log_file"
+}
+
+find_built_app_by_bundle_id() {
+  local expected_bundle_id="$1"
+  local found_app=""
+
+  while IFS= read -r -d '' candidate; do
+    local candidate_bundle_id
+    candidate_bundle_id="$(
+      /usr/bin/defaults read "$candidate/Contents/Info.plist" CFBundleIdentifier 2>/dev/null || true
+    )"
+    if [[ "$candidate_bundle_id" == "$expected_bundle_id" ]]; then
+      if [[ -n "$found_app" ]]; then
+        echo "Multiple app bundles found for $expected_bundle_id in $BUILD_DIR" >&2
+        exit 1
+      fi
+      found_app="$candidate"
+    fi
+  done < <(find "$BUILD_DIR" -maxdepth 1 -type d -name "*.app" -print0)
+
+  if [[ -z "$found_app" ]]; then
+    echo "Unable to locate built app bundle for $expected_bundle_id in $BUILD_DIR" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$found_app"
 }
 
 sign_app_bundle() {
@@ -92,8 +117,11 @@ echo "Building release artifacts..."
 build_target "OfficeResumeDirect"
 build_target "OfficeResumeHelper"
 
-cp -R "$BUILD_DIR/OfficeResume.app" "$DIRECT_APP"
-cp -R "$BUILD_DIR/OfficeResumeHelper.app" "$HELPER_APP"
+DIRECT_BUILT_APP="$(find_built_app_by_bundle_id "com.pragprod.msofficeresume.direct")"
+HELPER_BUILT_APP="$(find_built_app_by_bundle_id "com.pragprod.msofficeresume.helper")"
+
+cp -R "$DIRECT_BUILT_APP" "$DIRECT_APP"
+cp -R "$HELPER_BUILT_APP" "$HELPER_APP"
 
 mkdir -p "$DIRECT_APP/Contents/Library/LoginItems"
 rm -rf "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app"
