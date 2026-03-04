@@ -8,14 +8,15 @@ struct OfficeResumeMenuScene: Scene {
 
     init(channel: DistributionChannel) {
         self.channel = channel
-        _model = StateObject(wrappedValue: OfficeResumeMenuViewModel(channel: channel))
+        let viewModel = OfficeResumeMenuViewModel(channel: channel)
+        viewModel.startupIfNeeded()
+        _model = StateObject(wrappedValue: viewModel)
     }
 
     var body: some Scene {
         MenuBarExtra("Office Resume", systemImage: "arrow.clockwise.circle") {
             OfficeResumeMenuContentView(model: model)
         }
-        .menuBarExtraStyle(.window)
     }
 }
 
@@ -23,26 +24,24 @@ private struct OfficeResumeMenuContentView: View {
     @ObservedObject var model: OfficeResumeMenuViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             if !model.connectionOK {
-                Text("Helper unavailable. Relaunch Office Resume.")
-                    .font(.callout)
+                Text("Connecting to helper...")
                     .foregroundStyle(.secondary)
             }
 
             if model.status.isPaused {
                 Text("Tracking is paused")
-                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             if !model.status.accessibilityTrusted {
                 Text("Accessibility permission is required.")
-                    .font(.callout)
                     .foregroundStyle(.secondary)
                 Button("Open Accessibility Settings") {
                     model.openAccessibilitySettings()
                 }
+                Divider()
             }
 
             Button(model.status.isPaused ? "Resume Tracking" : "Pause Tracking") {
@@ -66,21 +65,12 @@ private struct OfficeResumeMenuContentView: View {
                 }
             }
 
-            if model.status.unsupportedApps.contains(.onenote) {
-                Text("OneNote is not supported in v1.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
             Divider()
             Button("Quit") {
                 model.quit()
             }
         }
-        .padding(12)
-        .frame(width: 300)
         .onAppear {
-            model.startupIfNeeded()
             model.reloadStatus()
         }
     }
@@ -104,9 +94,16 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     private let channel: DistributionChannel
     private let client = DaemonXPCClient()
     private var started = false
+    private var statusRefreshTimer: Timer?
+    private var startupRetryCount = 0
+    private let maxStartupRetryCount = 8
 
     init(channel: DistributionChannel) {
         self.channel = channel
+    }
+
+    deinit {
+        statusRefreshTimer?.invalidate()
     }
 
     var canRunRestore: Bool {
@@ -119,6 +116,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         }
         RuntimeConfiguration.setDistributionChannel(channel)
         HelperLauncher.ensureHelperRunning()
+        startStatusRefreshTimer()
         started = true
     }
 
@@ -130,8 +128,10 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                 case let .success(status):
                     self.status = status
                     self.connectionOK = true
+                    self.startupRetryCount = 0
                 case .failure:
                     self.connectionOK = false
+                    self.retryStartupIfNeeded()
                 }
             }
         }
@@ -175,7 +175,32 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     }
 
     func quit() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = nil
         HelperLauncher.terminateHelperIfRunning()
         NSApplication.shared.terminate(nil)
+    }
+
+    private func startStatusRefreshTimer() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.reloadStatus()
+        }
+    }
+
+    private func retryStartupIfNeeded() {
+        guard started else {
+            return
+        }
+        guard startupRetryCount < maxStartupRetryCount else {
+            return
+        }
+
+        startupRetryCount += 1
+        HelperLauncher.ensureHelperRunning()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.reloadStatus()
+        }
     }
 }

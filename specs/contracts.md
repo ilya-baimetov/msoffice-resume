@@ -59,4 +59,4 @@ MAS root:
 ## Support Matrix
 - Word/Excel/PowerPoint: document-level capture/restore
 - Outlook: relaunch-only restore mode
-- OneNote: unsupported in v1, surfaced in UI
+- OneNote: unsupported in v1, and not shown as a dedicated menu row

@@ -9,7 +9,7 @@ Menu bar user interface and command surface for helper control.
 - `Sources/MenuUIShared/**`
 
 ## Responsibilities
-1. Render a compact, dockless menu-bar popover UI.
+1. Render a standard dockless macOS menu (`MenuBarExtra` menu style).
 2. Render helper availability and paused-state feedback.
 3. Render Accessibility status + settings action when needed.
 4. Expose controls:
@@ -18,8 +18,7 @@ Menu bar user interface and command surface for helper control.
    - `Advanced > Clear Snapshot`
    - `Advanced > Open Debug Log in Console`
    - `Quit`
-5. Render unsupported app notice for OneNote.
-6. Initialize distribution channel marker for helper/core selection.
+5. Initialize distribution channel marker for helper/core selection.
 
 ## Channel Rules
 - Direct target sets channel marker to `direct`.
@@ -28,9 +27,9 @@ Menu bar user interface and command surface for helper control.
 
 ## Forbidden Changes
 - Do not move monitoring/restore logic into UI process.
-- Do not hide OneNote unsupported status.
 - Do not add per-app restore policy UI in v1.
 - Do not reintroduce persistent Dock presence for menu app targets.
+- Do not show a dedicated OneNote unsupported row/message in the menu UI.
 
 ## Component Acceptance Checks
 - Controls invoke corresponding XPC commands.

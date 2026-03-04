@@ -11,7 +11,7 @@
 v1 support:
 - Word/Excel/PowerPoint: document-level restore
 - Outlook: lifecycle + window metadata capture; restore = relaunch only
-- OneNote: unsupported (UI-visible state)
+- OneNote: unsupported (no dedicated menu UI line in v1)
 
 ## 2. Repository and Target Layout (Planned)
 ```
@@ -130,7 +130,7 @@ XPC-facing API (helper service):
 ### 5.2 MenuBarApp
 - Run as a dockless LSUIElement menu bar app.
 - Keep a shared menu UI implementation used by both Direct and MAS targets.
-- Present a compact window-style menu (`MenuBarExtra`) with:
+- Present a standard macOS menu-style `MenuBarExtra` (not custom window-style) with:
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
   - `Advanced` submenu:
@@ -138,7 +138,6 @@ XPC-facing API (helper service):
     - `Open Debug Log in Console`
   - `Quit`
 - Show Accessibility requirement status and deep-link to system settings when missing.
-- Show unsupported app notice for OneNote.
 - Start helper via `SMAppService` (login item).
 - `Quit` must terminate both menu app and helper process.
 
@@ -375,7 +374,7 @@ No cross-channel purchase linking in v1.
 7. Untitled force-save creates artifact + index mapping.
 8. Unsaved artifact restore works and purges when stale.
 9. Outlook relaunch-only flow executes without message-level restore attempts.
-10. OneNote shown unsupported in status/UI.
+10. OneNote remains unsupported and no OneNote restore is attempted.
 11. Trial active allows monitor/restore.
 12. Trial/subscription inactive disables monitor/restore, preserves read-only history.
 13. MAS StoreKit entitlement refresh logic correct.

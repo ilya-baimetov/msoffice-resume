@@ -11,12 +11,17 @@ public enum HelperLauncher {
     public static func ensureHelperRunning(bundleIdentifier: String = helperBundleIdentifier) {
         registerLoginItemIfAvailable(bundleIdentifier: bundleIdentifier)
 
-        if !NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty {
+        guard let helperURL = resolveHelperURL(bundleIdentifier: bundleIdentifier) else {
             return
         }
 
-        guard let helperURL = resolveHelperURL(bundleIdentifier: bundleIdentifier) else {
+        let runningHelpers = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+        if runningHelpers.contains(where: { urlsEquivalent($0.bundleURL, helperURL) }) {
             return
+        }
+
+        if !runningHelpers.isEmpty {
+            terminateHelperIfRunning(bundleIdentifier: bundleIdentifier)
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
@@ -49,12 +54,12 @@ public enum HelperLauncher {
     }
 
     private static func resolveHelperURL(bundleIdentifier: String) -> URL? {
-        if let fromLaunchServices = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-            return fromLaunchServices
-        }
-
         if let fromSibling = siblingHelperURL() {
             return fromSibling
+        }
+
+        if let fromLaunchServices = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            return fromLaunchServices
         }
 
         let applicationsPath = URL(fileURLWithPath: "/Applications", isDirectory: true)
@@ -100,5 +105,14 @@ public enum HelperLauncher {
             }
         }
 #endif
+    }
+
+    private static func urlsEquivalent(_ lhs: URL?, _ rhs: URL) -> Bool {
+        guard let lhs else {
+            return false
+        }
+
+        return lhs.resolvingSymlinksInPath().standardizedFileURL ==
+            rhs.resolvingSymlinksInPath().standardizedFileURL
     }
 }
