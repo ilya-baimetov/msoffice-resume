@@ -355,6 +355,7 @@ Must include:
 - Separate bundle IDs per distribution channel.
 - Common UI/helper/core behavior across channels.
 - Runtime app process/display naming unified as `OfficeResume`.
+- Direct `.pkg` preinstall policy: if `/Applications/OfficeResume.app` exists with MAS bundle ID, abort install and require uninstall-first flow.
 
 ## 15. Error Handling and Logging
 - Local-only structured logs.
@@ -383,7 +384,8 @@ Must include:
 17. Clear snapshot removes active restore state and relevant artifacts.
 18. No remote telemetry calls emitted.
 19. Direct free-pass only granted when backend allowlist/session says active.
-20. Direct `.pkg` install and upgrade path works for repeat installs.
+20. Direct `.pkg` install/upgrade works for repeat Direct installs.
+21. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/OfficeResume.app`.
 
 ## 17. Acceptance Criteria
 - All PRD required behaviors implemented.

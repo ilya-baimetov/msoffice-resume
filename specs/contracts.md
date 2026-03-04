@@ -46,6 +46,11 @@ Primary root (MAS + Direct signed runs):
 Dev-only fallback root (unsigned local runs):
 - `~/Library/Application Support/com.pragprod.msofficeresume/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
 
+## Packaging Contract
+- Direct canonical artifact is `.pkg`.
+- Direct installer may upgrade an existing Direct install in place.
+- Direct installer must not overwrite an installed MAS build at `/Applications/OfficeResume.app`; it must fail with uninstall-first instruction.
+
 ## Restore Invariants
 - Restore runs once per launch instance (one-shot marker).
 - Only missing documents are reopened.

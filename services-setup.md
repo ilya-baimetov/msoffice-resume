@@ -34,7 +34,7 @@ brew install node
 5. Generate Xcode project and run baseline checks:
 
 ```bash
-cd /Users/ilya.baimetov/Projects/msoffice-resume
+cd ~/Projects/msoffice-resume
 xcodegen generate
 xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeMAS -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build test
 xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeDirect -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build test
@@ -46,7 +46,7 @@ xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeHelper -desti
 6. Backend checks:
 
 ```bash
-cd /Users/ilya.baimetov/Projects/msoffice-resume/OfficeResumeBackend
+cd ~/Projects/msoffice-resume/OfficeResumeBackend
 npm ci || npm install
 npm run lint
 npm test
@@ -57,7 +57,7 @@ npm test
 ### 3.1 Build local dev pkg
 
 ```bash
-cd /Users/ilya.baimetov/Projects/msoffice-resume
+cd ~/Projects/msoffice-resume
 ./scripts/package-local-dev.sh
 ```
 

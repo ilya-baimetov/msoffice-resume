@@ -118,7 +118,8 @@ Required display:
 
 ### FR-9 Direct Installer Experience
 - Direct release artifact is a standard `.pkg` installer.
-- Installing newer `.pkg` updates existing install cleanly.
+- Installing newer `.pkg` updates existing Direct install cleanly.
+- Installer must detect opposite-channel install conflicts (`MAS` vs `Direct`) at install time and stop with an uninstall-first instruction.
 - Installer should restart/launch the app cleanly after update.
 
 ## 8. Non-Functional Requirements
@@ -161,7 +162,7 @@ Required display:
 5. Outlook relaunch-only behavior works.
 6. OneNote remains unsupported (no dedicated menu row).
 7. Entitlement gating and offline grace validated for MAS and Direct.
-8. Direct `.pkg` installer installs and upgrades cleanly.
+8. Direct `.pkg` installer installs/upgrades Direct builds cleanly and blocks MAS/Direct cross-channel overwrite.
 9. Production Direct flow does not accept local free-pass bypass inputs.
 10. Copilot review workflow documented and PR metadata captured.
 
@@ -178,11 +179,15 @@ Required display:
 - Impact: user surprise from changed title/path.
 - Mitigation: clear docs and recoverability-first behavior.
 
-### Risk 4: Direct entitlement security bypass attempts
+### Risk 4: Channel collision in `/Applications/OfficeResume.app`
+- Impact: Direct installer could overwrite MAS app (or vice versa) if not guarded.
+- Mitigation: install-time channel conflict check and explicit uninstall-first UX.
+
+### Risk 5: Direct entitlement security bypass attempts
 - Impact: unpaid users enabling premium features.
 - Mitigation: remove production local bypasses; enforce backend-authoritative free-pass.
 
-### Risk 5: Installer/update regressions
+### Risk 6: Installer/update regressions
 - Impact: failed app upgrades or orphan processes.
 - Mitigation: pkg update tests, postinstall process management checks.
 
