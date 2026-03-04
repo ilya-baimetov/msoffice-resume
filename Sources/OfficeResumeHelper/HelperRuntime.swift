@@ -903,6 +903,8 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityMonitor: OfficeAccessibilityMonitor?
     private var controller: HelperDaemonController?
     private var commandObservers: [NSObjectProtocol] = []
+    private var accessibilityTrustTimer: Timer?
+    private var lastAccessibilityTrusted: Bool?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -926,15 +928,20 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             }
             let trusted = accessibilityMonitor.start(prompt: true)
             controller.setAccessibilityTrusted(trusted)
+            lastAccessibilityTrusted = trusted
             self.accessibilityMonitor = accessibilityMonitor
 
             attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+            startAccessibilityTrustRefresh(accessibilityMonitor: accessibilityMonitor, controller: controller)
 
             let monitor = OfficeLifecycleMonitor { [weak controller, weak accessibilityMonitor] app, type, runningApplication in
                 Task { @MainActor in
                     if let accessibilityMonitor {
                         let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
                         controller?.setAccessibilityTrusted(trustedNow)
+                        if !trustedNow {
+                            accessibilityMonitor.stop()
+                        }
                     }
                     controller?.handleLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
                     if type == .appLaunched {
@@ -956,6 +963,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
         accessibilityMonitor?.stop()
+        stopAccessibilityTrustRefresh()
         stopCommandObservers()
         ProcessInfo.processInfo.enableSuddenTermination()
         ProcessInfo.processInfo.enableAutomaticTermination("Office Resume Helper monitoring")
@@ -1025,5 +1033,43 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             center.removeObserver(observer)
         }
         commandObservers.removeAll()
+    }
+
+    private func startAccessibilityTrustRefresh(
+        accessibilityMonitor: OfficeAccessibilityMonitor,
+        controller: HelperDaemonController
+    ) {
+        stopAccessibilityTrustRefresh()
+
+        accessibilityTrustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self, weak accessibilityMonitor] _ in
+            guard
+                let self,
+                let accessibilityMonitor
+            else {
+                return
+            }
+
+            let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
+            guard trustedNow != self.lastAccessibilityTrusted else {
+                return
+            }
+
+            self.lastAccessibilityTrusted = trustedNow
+
+            Task { @MainActor in
+                controller.setAccessibilityTrusted(trustedNow)
+            }
+
+            if trustedNow {
+                self.attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+            } else {
+                accessibilityMonitor.stop()
+            }
+        }
+    }
+
+    private func stopAccessibilityTrustRefresh() {
+        accessibilityTrustTimer?.invalidate()
+        accessibilityTrustTimer = nil
     }
 }

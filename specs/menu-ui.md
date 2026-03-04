@@ -39,4 +39,5 @@ Menu bar user interface and command surface for helper control.
 - Controls invoke helper commands via XPC or fallback distributed notifications.
 - Accessibility line shows `Accessibility: OK` when trusted.
 - Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
+- Accessibility line updates when permission is granted/revoked while app/helper are already running.
 - `Quit` terminates helper and menu app together.

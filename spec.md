@@ -166,6 +166,7 @@ XPC-facing API (helper service):
 
 ### 6.2 Accessibility Capture (Primary)
 - Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt on first run).
+- Refresh trust status periodically while helper is running (target cadence: every ~2 seconds) so menu status reflects permission toggles without requiring app restart.
 - On app launch, attach `AXObserver` to Office PID and subscribe to:
   - `kAXWindowCreatedNotification`
   - `kAXUIElementDestroyedNotification`
