@@ -37,90 +37,22 @@ public struct NSAppleScriptExecutor: ScriptExecuting {
     }
 }
 
-public actor UnsavedArtifactManager {
-    private let snapshotStore: SnapshotStore
-    private let fileManager: FileManager
-
-    public init(snapshotStore: SnapshotStore, fileManager: FileManager = .default) {
-        self.snapshotStore = snapshotStore
-        self.fileManager = fileManager
-    }
-
-    public func materializeArtifacts(for snapshot: AppSnapshot) async throws -> [DocumentSnapshot] {
-        guard OfficeBundleRegistry.documentRestoreApps.contains(snapshot.app) else {
-            return []
-        }
-
-        let unsavedDocs = snapshot.documents.filter { !$0.isSaved || $0.canonicalPath.isEmpty }
-        guard !unsavedDocs.isEmpty else {
-            return []
-        }
-
-        let unsavedDirectory = try await snapshotStore.ensureUnsavedDirectory(for: snapshot.app)
-        var index = try await snapshotStore.loadUnsavedIndex(for: snapshot.app)
-        var output: [DocumentSnapshot] = []
-
-        for doc in unsavedDocs {
-            let artifactID = UUID().uuidString
-            let extensionName = defaultExtension(for: snapshot.app)
-            let fileName = "\(artifactID).\(extensionName)"
-            let artifactURL = unsavedDirectory.appendingPathComponent(fileName)
-
-            if !fileManager.fileExists(atPath: artifactURL.path) {
-                try Data().write(to: artifactURL)
-            }
-
-            let now = Date()
-            let record = UnsavedArtifactRecord(
-                artifactID: artifactID,
-                originApp: snapshot.app,
-                originLaunchInstanceID: snapshot.launchInstanceID,
-                originalDisplayName: doc.displayName,
-                artifactPath: artifactURL.path,
-                createdAt: now,
-                updatedAt: now,
-                lastReferencedSnapshotLaunchID: snapshot.launchInstanceID
-            )
-            index.artifacts[artifactID] = record
-
-            let artifactDoc = DocumentSnapshot(
-                app: snapshot.app,
-                displayName: doc.displayName,
-                canonicalPath: artifactURL.path,
-                isSaved: true,
-                isTempArtifact: true,
-                capturedAt: now
-            )
-            output.append(artifactDoc)
-        }
-
-        try await snapshotStore.saveUnsavedIndex(index, for: snapshot.app)
-        return output
-    }
-
-    private func defaultExtension(for app: OfficeApp) -> String {
-        switch app {
-        case .word:
-            return "docx"
-        case .excel:
-            return "xlsx"
-        case .powerpoint:
-            return "pptx"
-        default:
-            return "tmp"
-        }
-    }
-}
-
 public final class AppleScriptOfficeAdapter: OfficeAdapter {
     public let app: OfficeApp
     private let scriptExecutor: ScriptExecuting
-    private let artifactManager: UnsavedArtifactManager?
+    private let snapshotStore: SnapshotStore?
+    private let fileManager: FileManager
 
-    public init(app: OfficeApp, scriptExecutor: ScriptExecuting = NSAppleScriptExecutor(), artifactManager: UnsavedArtifactManager? = nil) {
+    public init(
+        app: OfficeApp,
+        scriptExecutor: ScriptExecuting = NSAppleScriptExecutor(),
+        snapshotStore: SnapshotStore? = nil,
+        fileManager: FileManager = .default
+    ) {
         self.app = app
         self.scriptExecutor = scriptExecutor
-        self.artifactManager = artifactManager
+        self.snapshotStore = snapshotStore
+        self.fileManager = fileManager
     }
 
     public func fetchState() async throws -> AppSnapshot {
@@ -210,10 +142,75 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
     }
 
     public func forceSaveUntitled(state: AppSnapshot) async throws -> [DocumentSnapshot] {
-        guard let artifactManager else {
+        guard OfficeBundleRegistry.documentRestoreApps.contains(app) else {
             return []
         }
-        return try await artifactManager.materializeArtifacts(for: state)
+        guard let snapshotStore else {
+            return []
+        }
+
+        let unsavedEntries = state.documents.enumerated().filter { _, document in
+            !document.isSaved || document.canonicalPath.isEmpty
+        }
+        guard !unsavedEntries.isEmpty else {
+            return []
+        }
+
+        let unsavedDirectory = try await snapshotStore.ensureUnsavedDirectory(for: app)
+        var index = try await snapshotStore.loadUnsavedIndex(for: app)
+        var artifacts: [DocumentSnapshot] = []
+
+        for (documentIndex, document) in unsavedEntries {
+            let artifactID = UUID().uuidString.lowercased()
+            let extensionName = defaultExtension(for: app)
+            let artifactURL = unsavedDirectory.appendingPathComponent("\(artifactID).\(extensionName)")
+
+            do {
+                _ = try scriptExecutor.run(
+                    script: forceSaveDocumentScript(
+                        for: app,
+                        documentIndex: documentIndex + 1,
+                        targetPath: artifactURL.path
+                    )
+                )
+            } catch {
+                continue
+            }
+
+            guard fileManager.fileExists(atPath: artifactURL.path) else {
+                continue
+            }
+
+            let now = Date()
+            let record = UnsavedArtifactRecord(
+                artifactID: artifactID,
+                originApp: app,
+                originLaunchInstanceID: state.launchInstanceID,
+                originalDisplayName: document.displayName,
+                artifactPath: artifactURL.path,
+                createdAt: now,
+                updatedAt: now,
+                lastReferencedSnapshotLaunchID: state.launchInstanceID
+            )
+            index.artifacts[artifactID] = record
+
+            artifacts.append(
+                DocumentSnapshot(
+                    app: app,
+                    displayName: document.displayName,
+                    canonicalPath: artifactURL.path,
+                    isSaved: true,
+                    isTempArtifact: true,
+                    capturedAt: now
+                )
+            )
+        }
+
+        if !artifacts.isEmpty {
+            try await snapshotStore.saveUnsavedIndex(index, for: app)
+        }
+
+        return artifacts
     }
 
     private func currentRunningApplication() -> NSRunningApplication? {
@@ -410,6 +407,60 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         }
         return "tell application id \"\(bundleID)\" to open POSIX file \"\(escapedPath)\""
     }
+
+    private func forceSaveDocumentScript(for app: OfficeApp, documentIndex: Int, targetPath: String) -> String {
+        let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) ?? ""
+        let collectionName: String
+        switch app {
+        case .word:
+            collectionName = "documents"
+        case .excel:
+            collectionName = "workbooks"
+        case .powerpoint:
+            collectionName = "presentations"
+        default:
+            collectionName = "documents"
+        }
+
+        let escapedTargetPath = targetPath
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        return """
+        tell application id "\(bundleID)"
+            set __or_docs to \(collectionName)
+            if (count of __or_docs) < \(documentIndex) then
+                return "missing"
+            end if
+
+            set __or_doc to item \(documentIndex) of __or_docs
+            set __or_saved_flag to true
+            try
+                set __or_saved_flag to (saved of __or_doc)
+            end try
+
+            if __or_saved_flag is true then
+                return "already-saved"
+            end if
+
+            save __or_doc in (POSIX file "\(escapedTargetPath)")
+            return "saved"
+        end tell
+        """
+    }
+
+    private func defaultExtension(for app: OfficeApp) -> String {
+        switch app {
+        case .word:
+            return "docx"
+        case .excel:
+            return "xlsx"
+        case .powerpoint:
+            return "pptx"
+        default:
+            return "tmp"
+        }
+    }
 }
 
 public struct OneNoteUnsupportedAdapter: OfficeAdapter {
@@ -439,12 +490,11 @@ public struct OneNoteUnsupportedAdapter: OfficeAdapter {
 
 public enum OfficeAdapterFactory {
     public static func makeDefaultAdapters(snapshotStore: SnapshotStore) -> [OfficeApp: OfficeAdapter] {
-        let artifactManager = UnsavedArtifactManager(snapshotStore: snapshotStore)
         return [
-            .word: AppleScriptOfficeAdapter(app: .word, artifactManager: artifactManager),
-            .excel: AppleScriptOfficeAdapter(app: .excel, artifactManager: artifactManager),
-            .powerpoint: AppleScriptOfficeAdapter(app: .powerpoint, artifactManager: artifactManager),
-            .outlook: AppleScriptOfficeAdapter(app: .outlook, artifactManager: nil),
+            .word: AppleScriptOfficeAdapter(app: .word, snapshotStore: snapshotStore),
+            .excel: AppleScriptOfficeAdapter(app: .excel, snapshotStore: snapshotStore),
+            .powerpoint: AppleScriptOfficeAdapter(app: .powerpoint, snapshotStore: snapshotStore),
+            .outlook: AppleScriptOfficeAdapter(app: .outlook, snapshotStore: nil),
             .onenote: OneNoteUnsupportedAdapter(),
         ]
     }

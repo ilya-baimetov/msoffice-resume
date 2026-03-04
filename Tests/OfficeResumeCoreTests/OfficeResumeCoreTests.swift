@@ -7,6 +7,9 @@ final class OfficeResumeCoreTests: XCTestCase {
             isPaused: false,
             helperRunning: true,
             entitlementActive: true,
+            entitlementPlan: .trial,
+            entitlementValidUntil: Date(timeIntervalSince1970: 1_700_086_400),
+            entitlementTrialEndsAt: Date(timeIntervalSince1970: 1_700_086_400),
             accessibilityTrusted: true,
             latestSnapshotCapturedAt: [.word: Date(timeIntervalSince1970: 1_700_000_000)],
             unsupportedApps: [.onenote]
@@ -227,6 +230,71 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(state?.plan, .yearly)
     }
 
+    func testRuntimeConfigurationUsesStoredDirectChannel() {
+        let suiteName = "OfficeResumeTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated defaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set("direct", forKey: "com.pragprod.msofficeresume.distribution-channel")
+
+        let channel = RuntimeConfiguration.distributionChannel(userDefaults: defaults, environment: [:])
+        XCTAssertEqual(channel, .direct)
+        XCTAssertEqual(RuntimeConfiguration.storageChannel(for: channel), .direct)
+    }
+
+    func testForceSaveUntitledPersistsRealArtifactAndIndex() async throws {
+        let tempRoot = makeTempDirectory(name: "force-save")
+        let store = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let executor = MockScriptExecutor { script in
+            guard let path = Self.extractPath(fromSaveScript: script) else {
+                return ""
+            }
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("artifact".utf8).write(to: url)
+            return "saved"
+        }
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .word,
+            scriptExecutor: executor,
+            snapshotStore: store
+        )
+
+        let state = AppSnapshot(
+            app: .word,
+            launchInstanceID: "launch-123",
+            capturedAt: Date(),
+            documents: [
+                DocumentSnapshot(
+                    app: .word,
+                    displayName: "Untitled 1",
+                    canonicalPath: "",
+                    isSaved: false,
+                    isTempArtifact: false,
+                    capturedAt: Date()
+                ),
+            ],
+            windowsMeta: [],
+            restoreAttemptedForLaunch: false
+        )
+
+        let artifacts = try await adapter.forceSaveUntitled(state: state)
+        XCTAssertEqual(artifacts.count, 1)
+
+        guard let artifactPath = artifacts.first?.canonicalPath else {
+            XCTFail("Expected force-saved artifact path")
+            return
+        }
+        let payload = try Data(contentsOf: URL(fileURLWithPath: artifactPath))
+        XCTAssertEqual(String(data: payload, encoding: .utf8), "artifact")
+
+        let index = try await store.loadUnsavedIndex(for: .word)
+        XCTAssertEqual(index.artifacts.count, 1)
+    }
+
     private func makeDocument(path: String, app: OfficeApp = .word) -> DocumentSnapshot {
         DocumentSnapshot(
             app: app,
@@ -259,5 +327,24 @@ final class OfficeResumeCoreTests: XCTestCase {
             overrideEnvironment: [:],
             overrideFreePassFileURL: isolatedConfigURL
         )
+    }
+
+    private static func extractPath(fromSaveScript script: String) -> String? {
+        guard let markerRange = script.range(of: "POSIX file \"") else {
+            return nil
+        }
+        let remainder = script[markerRange.upperBound...]
+        guard let end = remainder.firstIndex(of: "\"") else {
+            return nil
+        }
+        return String(remainder[..<end])
+    }
+}
+
+private struct MockScriptExecutor: ScriptExecuting {
+    let handler: (String) throws -> String
+
+    func run(script: String) throws -> String {
+        try handler(script)
     }
 }

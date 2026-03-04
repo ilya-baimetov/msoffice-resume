@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(StoreKit)
+import StoreKit
+#endif
 
 public protocol RemoteEntitlementValidating {
     func fetchCurrentEntitlement() async throws -> EntitlementState
@@ -381,7 +384,17 @@ public actor StoreKitEntitlementProvider: EntitlementProvider {
     private let base: TrialEntitlementProvider
 
     public init(store: EntitlementFileStore, remoteValidator: RemoteEntitlementValidating? = nil, now: @escaping () -> Date = Date.init) {
-        self.base = TrialEntitlementProvider(store: store, remoteValidator: remoteValidator, now: now)
+        let resolvedValidator: RemoteEntitlementValidating?
+#if canImport(StoreKit)
+        if remoteValidator == nil, #available(macOS 14.0, *) {
+            resolvedValidator = StoreKitEntitlementValidator()
+        } else {
+            resolvedValidator = remoteValidator
+        }
+#else
+        resolvedValidator = remoteValidator
+#endif
+        self.base = TrialEntitlementProvider(store: store, remoteValidator: resolvedValidator, now: now)
     }
 
     public func currentState() async -> EntitlementState {
@@ -434,6 +447,22 @@ public struct StripeEntitlementValidator: RemoteEntitlementValidating {
             self.endpoint = endpoint
             self.bearerToken = bearerToken
         }
+
+        public static func fromEnvironment(
+            _ environment: [String: String] = ProcessInfo.processInfo.environment
+        ) -> Config? {
+            guard
+                let endpointRaw = environment["OFFICE_RESUME_ENTITLEMENT_ENDPOINT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !endpointRaw.isEmpty,
+                let endpoint = URL(string: endpointRaw),
+                let token = environment["OFFICE_RESUME_SESSION_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !token.isEmpty
+            else {
+                return nil
+            }
+
+            return Config(endpoint: endpoint, bearerToken: token)
+        }
     }
 
     private struct Response: Decodable {
@@ -480,5 +509,97 @@ public struct StripeEntitlementValidator: RemoteEntitlementValidating {
             trialEndsAt: decoded.trialEndsAt,
             lastValidatedAt: Date()
         )
+    }
+}
+
+#if canImport(StoreKit)
+@available(macOS 14.0, *)
+public struct StoreKitEntitlementValidator: RemoteEntitlementValidating {
+    private let productIDs: Set<String>
+
+    public init(productIDs: Set<String> = ["officeresume.monthly", "officeresume.yearly"]) {
+        self.productIDs = productIDs
+    }
+
+    public func fetchCurrentEntitlement() async throws -> EntitlementState {
+        var newestTransaction: Transaction?
+
+        for await entitlement in Transaction.currentEntitlements {
+            guard case let .verified(transaction) = entitlement else {
+                continue
+            }
+
+            guard productIDs.contains(transaction.productID) else {
+                continue
+            }
+
+            if transaction.revocationDate != nil || transaction.isUpgraded {
+                continue
+            }
+
+            if let current = newestTransaction {
+                let currentExpiry = current.expirationDate ?? .distantFuture
+                let candidateExpiry = transaction.expirationDate ?? .distantFuture
+                if candidateExpiry > currentExpiry {
+                    newestTransaction = transaction
+                }
+            } else {
+                newestTransaction = transaction
+            }
+        }
+
+        guard let transaction = newestTransaction else {
+            return EntitlementState(
+                isActive: false,
+                plan: .none,
+                validUntil: nil,
+                trialEndsAt: nil,
+                lastValidatedAt: Date()
+            )
+        }
+
+        let now = Date()
+        let validUntil = transaction.expirationDate
+        let isActive = validUntil.map { $0 > now } ?? true
+
+        let lowerProductID = transaction.productID.lowercased()
+        let plan: EntitlementState.Plan
+        if lowerProductID.contains("year") {
+            plan = .yearly
+        } else if lowerProductID.contains("month") {
+            plan = .monthly
+        } else {
+            plan = .monthly
+        }
+
+        return EntitlementState(
+            isActive: isActive,
+            plan: isActive ? plan : .none,
+            validUntil: validUntil,
+            trialEndsAt: transaction.offerType == .introductory ? validUntil : nil,
+            lastValidatedAt: now
+        )
+    }
+}
+#endif
+
+public enum EntitlementProviderFactory {
+    public static func makeProvider(
+        channel: DistributionChannel,
+        store: EntitlementFileStore,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EntitlementProvider {
+        switch channel {
+        case .mas:
+            return StoreKitEntitlementProvider(store: store)
+        case .direct:
+            if let config = StripeEntitlementValidator.Config.fromEnvironment(environment) {
+                return StripeEntitlementProvider(
+                    store: store,
+                    remoteValidator: StripeEntitlementValidator(config: config)
+                )
+            }
+            return StripeEntitlementProvider(store: store)
+        }
     }
 }

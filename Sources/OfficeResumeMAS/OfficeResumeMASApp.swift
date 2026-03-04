@@ -31,7 +31,7 @@ private struct ContentView: View {
                     .font(.caption)
             }
 
-            Text("Entitlement: \(model.status.entitlementActive ? "Active" : "Inactive")")
+            Text("Entitlement: \(model.entitlementLabel)")
                 .font(.caption)
 
             HStack {
@@ -110,6 +110,7 @@ private struct ContentView: View {
         .padding(12)
         .frame(width: 360)
         .onAppear {
+            RuntimeConfiguration.setDistributionChannel(.mas)
             HelperLauncher.ensureHelperRunning()
             model.refresh()
         }
@@ -122,6 +123,9 @@ private final class MenuBarViewModel: ObservableObject {
         isPaused: false,
         helperRunning: false,
         entitlementActive: false,
+        entitlementPlan: .none,
+        entitlementValidUntil: nil,
+        entitlementTrialEndsAt: nil,
         accessibilityTrusted: false,
         latestSnapshotCapturedAt: [:],
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
@@ -142,6 +146,26 @@ private final class MenuBarViewModel: ObservableObject {
             .map { app, date in
                 "\(app.rawValue): \(Self.formatter.string(from: date))"
             }
+    }
+
+    var entitlementLabel: String {
+        if !status.entitlementActive {
+            return "Inactive"
+        }
+
+        switch status.entitlementPlan {
+        case .trial:
+            if let trialEnds = status.entitlementTrialEndsAt ?? status.entitlementValidUntil {
+                return "Trial (ends \(Self.formatter.string(from: trialEnds)))"
+            }
+            return "Trial"
+        case .monthly:
+            return "Monthly"
+        case .yearly:
+            return "Yearly"
+        case .none:
+            return "Active"
+        }
     }
 
     func refresh() {

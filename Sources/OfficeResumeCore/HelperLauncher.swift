@@ -1,11 +1,16 @@
 import AppKit
 import Foundation
+#if canImport(ServiceManagement)
+import ServiceManagement
+#endif
 
 public enum HelperLauncher {
     public static let helperBundleIdentifier = "com.pragprod.msofficeresume.helper"
     public static let helperAppName = "OfficeResumeHelper.app"
 
     public static func ensureHelperRunning(bundleIdentifier: String = helperBundleIdentifier) {
+        registerLoginItemIfAvailable(bundleIdentifier: bundleIdentifier)
+
         if !NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty {
             return
         }
@@ -49,5 +54,27 @@ public enum HelperLauncher {
         }
 
         return nil
+    }
+
+    private static func registerLoginItemIfAvailable(bundleIdentifier: String) {
+#if canImport(ServiceManagement)
+        if #available(macOS 13.0, *) {
+            let service = SMAppService.loginItem(identifier: bundleIdentifier)
+            if service.status == .enabled {
+                return
+            }
+            do {
+                try service.register()
+            } catch {
+                DebugLog.warning(
+                    "Login item registration failed; falling back to manual helper launch",
+                    metadata: [
+                        "bundleIdentifier": bundleIdentifier,
+                        "error": error.localizedDescription,
+                    ]
+                )
+            }
+        }
+#endif
     }
 }

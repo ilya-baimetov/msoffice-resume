@@ -32,6 +32,9 @@ public final class DaemonStateStore {
         isPaused: false,
         helperRunning: true,
         entitlementActive: true,
+        entitlementPlan: .trial,
+        entitlementValidUntil: nil,
+        entitlementTrialEndsAt: nil,
         accessibilityTrusted: false,
         latestSnapshotCapturedAt: [:],
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
@@ -51,6 +54,9 @@ public final class DaemonStateStore {
                 isPaused: paused,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
@@ -65,6 +71,9 @@ public final class DaemonStateStore {
                 isPaused: status.isPaused,
                 helperRunning: running,
                 entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
@@ -72,12 +81,15 @@ public final class DaemonStateStore {
         }
     }
 
-    public func setEntitlementActive(_ isActive: Bool) {
+    public func setEntitlementState(_ entitlement: EntitlementState) {
         queue.sync {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
-                entitlementActive: isActive,
+                entitlementActive: entitlement.isActive,
+                entitlementPlan: entitlement.plan,
+                entitlementValidUntil: entitlement.validUntil,
+                entitlementTrialEndsAt: entitlement.trialEndsAt,
                 accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
@@ -91,6 +103,9 @@ public final class DaemonStateStore {
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 accessibilityTrusted: isTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
@@ -106,6 +121,9 @@ public final class DaemonStateStore {
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: updated,
                 unsupportedApps: status.unsupportedApps
@@ -119,6 +137,9 @@ public final class DaemonStateStore {
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: snapshots,
                 unsupportedApps: status.unsupportedApps

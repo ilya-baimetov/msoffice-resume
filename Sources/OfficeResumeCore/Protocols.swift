@@ -26,6 +26,9 @@ public struct DaemonStatusDTO: Codable {
     public let isPaused: Bool
     public let helperRunning: Bool
     public let entitlementActive: Bool
+    public let entitlementPlan: EntitlementState.Plan
+    public let entitlementValidUntil: Date?
+    public let entitlementTrialEndsAt: Date?
     public let accessibilityTrusted: Bool
     public let latestSnapshotCapturedAt: [OfficeApp: Date]
     public let unsupportedApps: [OfficeApp]
@@ -34,6 +37,9 @@ public struct DaemonStatusDTO: Codable {
         isPaused: Bool,
         helperRunning: Bool,
         entitlementActive: Bool,
+        entitlementPlan: EntitlementState.Plan,
+        entitlementValidUntil: Date?,
+        entitlementTrialEndsAt: Date?,
         accessibilityTrusted: Bool,
         latestSnapshotCapturedAt: [OfficeApp: Date],
         unsupportedApps: [OfficeApp]
@@ -41,6 +47,9 @@ public struct DaemonStatusDTO: Codable {
         self.isPaused = isPaused
         self.helperRunning = helperRunning
         self.entitlementActive = entitlementActive
+        self.entitlementPlan = entitlementPlan
+        self.entitlementValidUntil = entitlementValidUntil
+        self.entitlementTrialEndsAt = entitlementTrialEndsAt
         self.accessibilityTrusted = accessibilityTrusted
         self.latestSnapshotCapturedAt = latestSnapshotCapturedAt
         self.unsupportedApps = unsupportedApps

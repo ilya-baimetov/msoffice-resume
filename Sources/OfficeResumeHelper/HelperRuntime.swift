@@ -236,9 +236,13 @@ final class HelperDaemonController {
     private let accessibilityDebounceNanoseconds: UInt64 = 700_000_000
     private let emptySnapshotProtectionWindow: TimeInterval = 60
 
-    init(channel: StorageChannel? = nil, userDefaults: UserDefaults = .standard) throws {
+    init(
+        channel: StorageChannel? = nil,
+        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaults() ?? .standard
+    ) throws {
         let stateStore = DaemonStateStore()
-        let resolvedChannel = channel ?? Self.defaultStorageChannel()
+        let distributionChannel = RuntimeConfiguration.distributionChannel(userDefaults: userDefaults)
+        let resolvedChannel = channel ?? RuntimeConfiguration.storageChannel(for: distributionChannel)
         let snapshotStore = FileSnapshotStore(channel: resolvedChannel)
         let markerStore = try FileRestoreMarkerStore()
         let entitlementStore = try EntitlementFileStore()
@@ -246,7 +250,10 @@ final class HelperDaemonController {
         self.stateStore = stateStore
         self.snapshotStore = snapshotStore
         self.restoreEngine = RestoreEngine(snapshotStore: snapshotStore, markerStore: markerStore)
-        self.entitlementProvider = TrialEntitlementProvider(store: entitlementStore)
+        self.entitlementProvider = EntitlementProviderFactory.makeProvider(
+            channel: distributionChannel,
+            store: entitlementStore
+        )
         self.adapters = OfficeAdapterFactory.makeDefaultAdapters(snapshotStore: snapshotStore)
         self.userDefaults = userDefaults
 
@@ -259,6 +266,7 @@ final class HelperDaemonController {
             "Helper daemon initialized",
             metadata: [
                 "paused": isPaused ? "true" : "false",
+                "channel": distributionChannel.rawValue,
             ]
         )
     }
@@ -289,6 +297,9 @@ final class HelperDaemonController {
                     isPaused: true,
                     helperRunning: false,
                     entitlementActive: false,
+                    entitlementPlan: .none,
+                    entitlementValidUntil: nil,
+                    entitlementTrialEndsAt: nil,
                     accessibilityTrusted: false,
                     latestSnapshotCapturedAt: [:],
                     unsupportedApps: OfficeBundleRegistry.unsupportedApps
@@ -327,6 +338,9 @@ final class HelperDaemonController {
 
             if type == .appLaunched {
                 await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
+                guard await canCaptureState() else {
+                    return
+                }
                 await captureAppState(app: app, source: "launch")
             }
         }
@@ -356,12 +370,21 @@ final class HelperDaemonController {
         }
 
         let task = Task { [weak self] in
+            guard let self else {
+                return
+            }
+            guard await self.canCaptureState() else {
+                return
+            }
             do {
-                try await Task.sleep(nanoseconds: self?.accessibilityDebounceNanoseconds ?? 700_000_000)
+                try await Task.sleep(nanoseconds: self.accessibilityDebounceNanoseconds)
             } catch {
                 return
             }
-            await self?.captureAppState(app: app, source: source)
+            guard await self.canCaptureState() else {
+                return
+            }
+            await self.captureAppState(app: app, source: source)
         }
         pendingAXCaptureTasks[app] = task
     }
@@ -373,6 +396,9 @@ final class HelperDaemonController {
     private func setPaused(_ paused: Bool) async -> Bool {
         isPaused = paused
         userDefaults.set(paused, forKey: DefaultsKey.isPaused)
+        if paused {
+            cancelPendingAccessibilityCaptures()
+        }
         let ok = stateStore.setPaused(paused)
         DebugLog.info("Pause state updated", metadata: ["paused": paused ? "true" : "false", "ok": ok ? "true" : "false"])
         return ok
@@ -583,6 +609,10 @@ final class HelperDaemonController {
     private func captureAppState(app: OfficeApp, source: String) async {
         pendingAXCaptureTasks[app] = nil
 
+        guard await canCaptureState() else {
+            return
+        }
+
         guard let adapter = adapters[app] else {
             return
         }
@@ -651,11 +681,7 @@ final class HelperDaemonController {
     }
 
     private func captureRunningAppsAtStartup() async {
-        guard !isPaused else {
-            return
-        }
-
-        guard await entitlementProvider.canMonitor() else {
+        guard await canCaptureState() else {
             return
         }
 
@@ -689,7 +715,10 @@ final class HelperDaemonController {
     private func refreshEntitlementStatus() async {
         do {
             let state = try await entitlementProvider.refresh()
-            stateStore.setEntitlementActive(state.isActive)
+            stateStore.setEntitlementState(state)
+            if !state.isActive {
+                cancelPendingAccessibilityCaptures()
+            }
             DebugLog.debug(
                 "Entitlement refreshed",
                 metadata: [
@@ -699,7 +728,10 @@ final class HelperDaemonController {
             )
         } catch {
             let state = await entitlementProvider.currentState()
-            stateStore.setEntitlementActive(state.isActive)
+            stateStore.setEntitlementState(state)
+            if !state.isActive {
+                cancelPendingAccessibilityCaptures()
+            }
             DebugLog.warning(
                 "Entitlement refresh failed; using current state",
                 metadata: [
@@ -830,12 +862,19 @@ final class HelperDaemonController {
         return "\(app.processIdentifier)-\(Int64(launchTimestamp))"
     }
 
-    nonisolated private static func defaultStorageChannel() -> StorageChannel {
-        let appGroupIdentifier = "group.com.pragprod.msofficeresume"
-        if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) != nil {
-            return .mas(appGroupIdentifier: appGroupIdentifier)
+    private func canCaptureState() async -> Bool {
+        guard !isPaused else {
+            return false
         }
-        return .direct
+
+        return await entitlementProvider.canMonitor()
+    }
+
+    private func cancelPendingAccessibilityCaptures() {
+        for task in pendingAXCaptureTasks.values {
+            task.cancel()
+        }
+        pendingAXCaptureTasks.removeAll()
     }
 }
 

@@ -24,6 +24,7 @@
 		ADB2664FB099CC827FC262A2 /* OfficeAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */; };
 		B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */; };
 		B2207C57FB3F3E34EC1A9C2A /* RestoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */; };
+		B8CE7C3AF02324171E52E9CE /* RuntimeConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B1FA2326EDE0840C0B14A7 /* RuntimeConfiguration.swift */; };
 		CD238BE79AD57922EF5EC144 /* OfficeResumeCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F190C84B09268D85A25644F /* OfficeResumeCoreTests.swift */; };
 		CF761B8E267B9B038700CE37 /* Entitlements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41959A9EA7E71C4BB708F038 /* Entitlements.swift */; };
 		DB0A1FF013033602C4C710F1 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -111,6 +112,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		10B1FA2326EDE0840C0B14A7 /* RuntimeConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfiguration.swift; sourceTree = "<group>"; };
 		2D3787B498286957D8A0E58D /* OfficeResumeCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OfficeResumeCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeAdapters.swift; sourceTree = "<group>"; };
 		41959A9EA7E71C4BB708F038 /* Entitlements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entitlements.swift; sourceTree = "<group>"; };
@@ -216,6 +218,7 @@
 				8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */,
 				CF22C81325E81BB13E62C604 /* Protocols.swift */,
 				775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */,
+				10B1FA2326EDE0840C0B14A7 /* RuntimeConfiguration.swift */,
 				CCFD048CD819C1A22D466DD6 /* Storage.swift */,
 			);
 			name = OfficeResumeCore;
@@ -417,6 +420,7 @@
 				B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */,
 				49EDE795080CB527122DF54D /* Protocols.swift in Sources */,
 				B2207C57FB3F3E34EC1A9C2A /* RestoreEngine.swift in Sources */,
+				B8CE7C3AF02324171E52E9CE /* RuntimeConfiguration.swift in Sources */,
 				7338E9FEED70CCDC995EEF7B /* Storage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -503,6 +507,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -641,6 +646,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -717,6 +723,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -731,6 +738,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
