@@ -8,8 +8,17 @@ Before writing code, read these files in order and treat them as canonical:
 1. `AGENTS.md`
 2. `PRD.md`
 3. `spec.md`
+4. `specs/contracts.md`
+5. Relevant component spec(s) in `specs/*.md` for the code you are changing
 
 Do not start by re-planning the product. Execute the defined scope directly.
+
+If you are implementing one component in isolation, load only:
+- canonical docs above
+- that component spec
+- directly referenced source files
+
+Do not preload unrelated component specs.
 
 ## Objective
 Build a macOS 14+ Apple Silicon menu bar app with a login helper daemon that captures Office state and restores it on relaunch, including:
@@ -34,11 +43,11 @@ Capture strategy is locked:
 3. Helper/login item process for monitoring and restore execution.
 4. XPC contract between menu app and helper.
 5. Cloudflare Worker backend for direct entitlement verification (Stripe webhook + auth flow).
-6. Unit/integration tests covering key scenarios from `spec.md`.
+6. Unit/integration tests covering key scenarios from `spec.md` and component specs.
 
 ## Implementation Order
 1. Create project structure and targets/schemes.
-2. Implement shared domain models/protocols from `spec.md`.
+2. Implement shared domain models/protocols from `spec.md` + `specs/contracts.md`.
 3. Implement storage layer and snapshot/event schemas.
 4. Implement Office adapters (W/E/P full, Outlook limited, OneNote unsupported).
 5. Implement restore engine with dedupe + one-shot launch marker.
@@ -49,10 +58,10 @@ Capture strategy is locked:
 - StoreKit 2 (MAS)
 - Stripe API client (direct)
 10. Implement Cloudflare Worker endpoints and Stripe webhook handling.
-11. Add tests and run verification checklist.
+11. Add tests and run verification checklist from `spec.md` and component specs.
 
 ## Hard Constraints
-- Keep scope exactly aligned with `PRD.md` and `spec.md`.
+- Keep scope exactly aligned with `PRD.md`, `spec.md`, and `specs/*.md`.
 - Do not add remote analytics telemetry.
 - Do not add OneNote restore in v1.
 - Keep restore policy global and auto-on relaunch.
@@ -70,6 +79,7 @@ Implementation is complete only when:
 6. OneNote unsupported state is visible.
 7. Billing flows exist for MAS and direct channels.
 8. Test matrix in `spec.md` is executed and results are reported.
+9. If component code changed, the matching component spec is updated.
 
 ## Response Format for Progress and Completion
 When reporting progress:

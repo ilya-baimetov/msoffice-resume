@@ -10,8 +10,16 @@ When documents conflict, apply this order:
 
 1. `AGENTS.md` (this file): workflow and guardrails for contributors/agents.
 2. `PRD.md`: product behavior, user requirements, scope, pricing, release criteria.
-3. `spec.md`: implementation details, APIs/contracts, storage format, test matrix.
-4. `prompt.md`: execution prompt for fresh contexts/agents.
+3. `spec.md`: system-level implementation contract and architecture.
+4. `specs/contracts.md`: shared cross-component interfaces and invariants.
+5. `specs/*.md`: component-level implementation details.
+6. `prompt.md`: execution prompt for fresh contexts/agents.
+
+## Component Spec Map
+- `specs/core.md` -> `Sources/OfficeResumeCore/**` and `Tests/OfficeResumeCoreTests/**`
+- `specs/helper-daemon.md` -> `Sources/OfficeResumeHelper/**`
+- `specs/menu-ui.md` -> `Sources/OfficeResumeDirect/**` and `Sources/OfficeResumeMAS/**`
+- `specs/backend-worker.md` -> `OfficeResumeBackend/**`
 
 ## Locked Product Constraints
 - Product name: `Office Resume`
@@ -85,7 +93,7 @@ For Word/Excel/PowerPoint untitled docs:
 - Keep MAS and Direct billing providers separated behind a common entitlement interface
 - No remote telemetry in v1
 - Keep OneNote unsupported unless explicitly re-scoped in PRD/spec updates
-- Do not broaden scope without explicit updates to `PRD.md` and `spec.md`
+- Do not broaden scope without explicit updates to `PRD.md`, `spec.md`, and relevant `specs/*.md` files
 
 ## Required Technical Components
 - Menu bar app
@@ -109,7 +117,7 @@ No feature is complete unless these pass:
 7. Verification that behavior is correct with Accessibility both granted and denied.
 
 ## Contributor Workflow
-1. Read `AGENTS.md`, `PRD.md`, and `spec.md` before coding.
+1. Read `AGENTS.md`, `PRD.md`, `spec.md`, `specs/contracts.md`, and the relevant component spec(s) before coding.
 2. Implement in small vertical slices:
    - shared models/protocols
    - storage + event log
@@ -118,5 +126,6 @@ No feature is complete unless these pass:
    - helper and XPC
    - menu UI
    - billing/entitlements
-3. Keep docs current when behavior or interfaces change.
-4. For any scope change request, update `PRD.md` and `spec.md` in the same change set.
+3. Keep docs current when behavior or interfaces change, including component specs.
+4. If a component code path changes, update that component spec in the same change set.
+5. For scope changes, update `PRD.md`, `spec.md`, and impacted `specs/*.md` together.

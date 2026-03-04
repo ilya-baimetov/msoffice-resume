@@ -29,6 +29,19 @@ Two app schemes/targets:
 
 Both use shared `OfficeResumeCore` and `OfficeResumeHelper`.
 
+## 2.1 Componentized Spec Set
+Use this file as the system-level contract, then apply component specs for scoped implementation:
+
+- `specs/contracts.md` - cross-component interfaces and invariants
+- `specs/core.md` - core module scope (`Sources/OfficeResumeCore/**`, `Tests/OfficeResumeCoreTests/**`)
+- `specs/helper-daemon.md` - helper runtime scope (`Sources/OfficeResumeHelper/**`)
+- `specs/menu-ui.md` - menu UI scope (`Sources/OfficeResumeDirect/**`, `Sources/OfficeResumeMAS/**`)
+- `specs/backend-worker.md` - direct entitlement backend scope (`OfficeResumeBackend/**`)
+
+When conflicts exist:
+1. `spec.md` wins over component specs.
+2. `specs/contracts.md` wins over component-local details.
+
 ## 3. Core Domain Types
 
 ```swift

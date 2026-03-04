@@ -32,11 +32,104 @@ jobs:
           test -f PRD.md
           test -f spec.md
           test -f prompt.md
+          test -f specs/contracts.md
+          test -f specs/core.md
+          test -f specs/helper-daemon.md
+          test -f specs/menu-ui.md
+          test -f specs/backend-worker.md
 
       - name: Validate locked bundle prefix
         run: |
           set -euo pipefail
           grep -En "com\.pragprod\.msofficeresume" AGENTS.md
+
+  spec-drift-guardrails:
+    name: spec-drift-guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate component spec updates when code changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_ref="${GITHUB_BASE_REF:-main}"
+          git fetch origin "${base_ref}" --depth=1
+          changed="$(git diff --name-only "origin/${base_ref}"...HEAD)"
+
+          if [[ -z "${changed}" ]]; then
+            echo "No changed files detected."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "${changed}"
+
+          has_any() {
+            local pattern="$1"
+            if echo "${changed}" | grep -Eq "${pattern}"; then
+              return 0
+            fi
+            return 1
+          }
+
+          core_changed=false
+          helper_changed=false
+          ui_changed=false
+          backend_changed=false
+          failed=false
+
+          if has_any '^Sources/OfficeResumeCore/|^Tests/OfficeResumeCoreTests/'; then
+            core_changed=true
+          fi
+          if has_any '^Sources/OfficeResumeHelper/'; then
+            helper_changed=true
+          fi
+          if has_any '^Sources/OfficeResumeDirect/|^Sources/OfficeResumeMAS/'; then
+            ui_changed=true
+          fi
+          if has_any '^OfficeResumeBackend/'; then
+            backend_changed=true
+          fi
+
+          if ${core_changed}; then
+            if ! has_any '^spec\.md$|^specs/contracts\.md$|^specs/core\.md$'; then
+              echo "Core code changed without updating spec.md/specs/contracts.md/specs/core.md"
+              failed=true
+            fi
+          fi
+
+          if ${helper_changed}; then
+            if ! has_any '^spec\.md$|^specs/contracts\.md$|^specs/helper-daemon\.md$'; then
+              echo "Helper code changed without updating spec.md/specs/contracts.md/specs/helper-daemon.md"
+              failed=true
+            fi
+          fi
+
+          if ${ui_changed}; then
+            if ! has_any '^spec\.md$|^specs/contracts\.md$|^specs/menu-ui\.md$'; then
+              echo "Menu UI code changed without updating spec.md/specs/contracts.md/specs/menu-ui.md"
+              failed=true
+            fi
+          fi
+
+          if ${backend_changed}; then
+            if ! has_any '^spec\.md$|^specs/contracts\.md$|^specs/backend-worker\.md$'; then
+              echo "Backend code changed without updating spec.md/specs/contracts.md/specs/backend-worker.md"
+              failed=true
+            fi
+          fi
+
+          if ${failed}; then
+            echo "Spec drift guardrail failed."
+            exit 1
+          fi
+
+          echo "Spec drift guardrails passed."
 
   build-test-mas:
     name: build-test-mas

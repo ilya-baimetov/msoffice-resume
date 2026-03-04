@@ -5,6 +5,11 @@ Office Resume v1 planning docs are in:
 - `AGENTS.md`
 - `PRD.md`
 - `spec.md`
+- `specs/contracts.md`
+- `specs/core.md`
+- `specs/helper-daemon.md`
+- `specs/menu-ui.md`
+- `specs/backend-worker.md`
 - `prompt.md`
 
 Service/account setup instructions are in:
