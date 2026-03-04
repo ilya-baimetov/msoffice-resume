@@ -38,13 +38,14 @@ sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
 
 Installed paths:
 
-- `/Applications/OfficeResume.app`
-- `/Applications/OfficeResumeHelper.app`
+- `/Applications/Office Resume.app`
+- Embedded helper login item: `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
 Notes:
 
 - Local dev package is convenience-only and non-canonical for public distribution.
 - Canonical Direct distribution artifact is the pkg produced by `./scripts/release-direct.sh`.
+- macOS permissions are runtime-gated: Accessibility prompt appears on first launch; Apple Events prompts appear when Office automation is first used.
 
 ## Direct Release Packaging (.pkg)
 

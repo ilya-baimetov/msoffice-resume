@@ -4,10 +4,14 @@ set -euo pipefail
 /usr/bin/killall OfficeResume >/dev/null 2>&1 || true
 /usr/bin/killall OfficeResumeHelper >/dev/null 2>&1 || true
 
+# Remove legacy top-level install artifacts from previous package layouts.
+/bin/rm -rf "/Applications/OfficeResume.app"
+/bin/rm -rf "/Applications/OfficeResumeHelper.app"
+
 CONSOLE_USER="$(/usr/bin/stat -f%Su /dev/console 2>/dev/null || true)"
 if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" ]]; then
   USER_ID="$(/usr/bin/id -u "$CONSOLE_USER")"
-  /bin/launchctl asuser "$USER_ID" /usr/bin/open -a /Applications/OfficeResume.app >/dev/null 2>&1 || true
+  /bin/launchctl asuser "$USER_ID" /usr/bin/open -a "/Applications/Office Resume.app" >/dev/null 2>&1 || true
 fi
 
 exit 0

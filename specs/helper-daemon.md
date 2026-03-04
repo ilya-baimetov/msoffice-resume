@@ -32,6 +32,7 @@ Background runtime that captures Office state and performs restore actions.
 ## Startup + Permissions
 - Keep helper LSUIElement behavior.
 - Keep helper fully headless (no visible helper UI windows).
+- Helper bundle is shipped as embedded login item under the main app (`Contents/Library/LoginItems/OfficeResumeHelper.app`), not as a top-level `/Applications` app.
 - Surface Accessibility trust state into daemon status.
 - Refresh Accessibility trust state periodically (~2 seconds) and publish status updates without requiring lifecycle events.
 - Register and host XPC listener at startup.

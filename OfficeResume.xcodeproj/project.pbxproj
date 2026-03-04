@@ -11,6 +11,7 @@
 		04DF367F34DF0F64D5CB4D44 /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
 		06C0E7B70036EE4B164A92B8 /* OfficeResumeHelperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFB558BBFEF169A7B2FAD52 /* OfficeResumeHelperApp.swift */; };
 		06F365087C1DF4B203569594 /* HelperRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5403064CD71B4CEAD68B4E /* HelperRuntime.swift */; };
+		09D519E479D71C50A95FC9D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF4B1FAD76C5D4693A573903 /* Assets.xcassets */; };
 		195CE5EC0A9257EF89831F8A /* DaemonXPCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */; };
 		1F7CE05DBCA49A183ED9F743 /* HelperLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 999A82A7F7CEAC45008ED799 /* HelperLauncher.swift */; };
 		28977F73B9F3C2D3B3AAF648 /* OfficeResumeMenuUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */; };
@@ -28,6 +29,7 @@
 		B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */; };
 		B2207C57FB3F3E34EC1A9C2A /* RestoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */; };
 		B8CE7C3AF02324171E52E9CE /* RuntimeConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B1FA2326EDE0840C0B14A7 /* RuntimeConfiguration.swift */; };
+		C3D20BA887A98F37788C8F21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF4B1FAD76C5D4693A573903 /* Assets.xcassets */; };
 		CD238BE79AD57922EF5EC144 /* OfficeResumeCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F190C84B09268D85A25644F /* OfficeResumeCoreTests.swift */; };
 		CF761B8E267B9B038700CE37 /* Entitlements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41959A9EA7E71C4BB708F038 /* Entitlements.swift */; };
 		DB0A1FF013033602C4C710F1 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -134,6 +136,7 @@
 		AEFB558BBFEF169A7B2FAD52 /* OfficeResumeHelperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeResumeHelperApp.swift; sourceTree = "<group>"; };
 		B9B2FD1E91A496878C1C16F9 /* OfficeResumeHelper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OfficeResumeHelper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BAB093EEF177C26571E5959C /* OfficeResumeMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OfficeResumeMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF4B1FAD76C5D4693A573903 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CCFD048CD819C1A22D466DD6 /* Storage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift; sourceTree = "<group>"; };
 		CD184F908F9CB8CD5A3B33F4 /* OfficeResumeDirect.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OfficeResumeDirect.entitlements; sourceTree = "<group>"; };
 		CF22C81325E81BB13E62C604 /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
@@ -182,6 +185,7 @@
 		14A068B2B759A81E3E491EF7 /* MenuUIShared */ = {
 			isa = PBXGroup;
 			children = (
+				BF4B1FAD76C5D4693A573903 /* Assets.xcassets */,
 				E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */,
 			);
 			name = MenuUIShared;
@@ -321,6 +325,7 @@
 			buildConfigurationList = 403AB788F07813C0B60B4427 /* Build configuration list for PBXNativeTarget "OfficeResumeDirect" */;
 			buildPhases = (
 				F799AB165A68BF2A800A7769 /* Sources */,
+				CA8B4BE60F262A87DB7ABAAA /* Resources */,
 				A46E7F49504D1EE09B8064B8 /* Frameworks */,
 				DF543912603E5F29F2FEBD59 /* Embed Frameworks */,
 			);
@@ -341,6 +346,7 @@
 			buildConfigurationList = 5DB27D37A9D87124B7DF8F22 /* Build configuration list for PBXNativeTarget "OfficeResumeMAS" */;
 			buildPhases = (
 				C38010041EFE8450536D6C8B /* Sources */,
+				80E1047363224F47FB22C516 /* Resources */,
 				C836294FFB772497328EB41E /* Frameworks */,
 				395A33C2E3FE065FBCE4E623 /* Embed Frameworks */,
 			);
@@ -421,6 +427,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		80E1047363224F47FB22C516 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09D519E479D71C50A95FC9D2 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CA8B4BE60F262A87DB7ABAAA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3D20BA887A98F37788C8F21 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		28366693701E6BEEA01B44DE /* Sources */ = {
@@ -510,8 +535,8 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/OfficeResumeMAS/OfficeResumeMAS.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OfficeResume;
-				INFOPLIST_KEY_CFBundleName = OfficeResume;
+				INFOPLIST_KEY_CFBundleDisplayName = "Office Resume";
+				INFOPLIST_KEY_CFBundleName = "Office Resume";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -630,8 +655,8 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/OfficeResumeDirect/OfficeResumeDirect.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OfficeResume;
-				INFOPLIST_KEY_CFBundleName = OfficeResume;
+				INFOPLIST_KEY_CFBundleDisplayName = "Office Resume";
+				INFOPLIST_KEY_CFBundleName = "Office Resume";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -653,8 +678,8 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/OfficeResumeDirect/OfficeResumeDirect.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OfficeResume;
-				INFOPLIST_KEY_CFBundleName = OfficeResume;
+				INFOPLIST_KEY_CFBundleDisplayName = "Office Resume";
+				INFOPLIST_KEY_CFBundleName = "Office Resume";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -737,8 +762,8 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/OfficeResumeMAS/OfficeResumeMAS.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OfficeResume;
-				INFOPLIST_KEY_CFBundleName = OfficeResume;
+				INFOPLIST_KEY_CFBundleDisplayName = "Office Resume";
+				INFOPLIST_KEY_CFBundleName = "Office Resume";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Office Resume requires Apple Events to monitor and restore Microsoft Office applications.";
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -30,7 +30,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A4FA7AD8836C1FD757C45175"
-               BuildableName = "OfficeResume.app"
+               BuildableName = "OfficeResumeDirect.app"
                BlueprintName = "OfficeResumeDirect"
                ReferencedContainer = "container:OfficeResume.xcodeproj">
             </BuildableReference>

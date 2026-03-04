@@ -13,10 +13,12 @@ Run:
 Outputs:
 
 - `dist/OfficeResume-direct-unsigned.pkg`
-- `dist/release-direct/` (staged payload with `OfficeResume.app` + `OfficeResumeHelper.app`)
+- `dist/release-direct/` (staged payload with `Office Resume.app`, containing embedded `Contents/Library/LoginItems/OfficeResumeHelper.app`)
 
 The package uses a stable package identifier/version and supports upgrade installs.
-It also enforces channel-conflict protection: Direct install aborts if MAS is already installed at `/Applications/OfficeResume.app`.
+It also enforces channel-conflict protection: Direct install aborts if MAS is already installed at `/Applications/Office Resume.app`.
+Package components are built as non-relocatable to avoid installer relocation of `Office Resume.app` into user-local folders.
+The installer cannot grant TCC permissions; runtime prompts are triggered on first launch/use.
 
 ## 2. Sign App Bundles + Installer Package
 

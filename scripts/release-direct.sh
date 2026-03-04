@@ -9,6 +9,7 @@ PROJECT_YML="$REPO_ROOT/project.yml"
 BUILD_DIR="$REPO_ROOT/dist/release-build"
 OUT_DIR="$REPO_ROOT/dist/release-direct"
 PAYLOAD_DIR="$OUT_DIR/payload"
+COMPONENT_PLIST="$OUT_DIR/components.plist"
 PKG_SCRIPTS_DIR="$REPO_ROOT/scripts/pkg/direct"
 UNSIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-unsigned.pkg"
 SIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-signed.pkg"
@@ -22,6 +23,8 @@ NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-}"
 
 DIRECT_APP="$OUT_DIR/OfficeResume.app"
 HELPER_APP="$OUT_DIR/OfficeResumeHelper.app"
+INSTALL_APP_NAME="Office Resume.app"
+INSTALL_APP_PATH="$PAYLOAD_DIR/Applications/$INSTALL_APP_NAME"
 DIRECT_ENTITLEMENTS="$REPO_ROOT/Sources/OfficeResumeDirect/OfficeResumeDirect.entitlements"
 HELPER_ENTITLEMENTS="$REPO_ROOT/Sources/OfficeResumeHelper/OfficeResumeHelper.entitlements"
 
@@ -92,9 +95,13 @@ build_target "OfficeResumeHelper"
 cp -R "$BUILD_DIR/OfficeResume.app" "$DIRECT_APP"
 cp -R "$BUILD_DIR/OfficeResumeHelper.app" "$HELPER_APP"
 
+mkdir -p "$DIRECT_APP/Contents/Library/LoginItems"
+rm -rf "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app"
+cp -R "$HELPER_APP" "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app"
+
 if [[ -n "$DEVELOPER_ID_APPLICATION" ]]; then
   echo "Signing app bundles with Developer ID Application certificate..."
-  sign_app_bundle "$HELPER_APP" "$HELPER_ENTITLEMENTS"
+  sign_app_bundle "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app" "$HELPER_ENTITLEMENTS"
   sign_app_bundle "$DIRECT_APP" "$DIRECT_ENTITLEMENTS"
 else
   echo "DEVELOPER_ID_APPLICATION not set; app bundles remain unsigned."
@@ -102,8 +109,15 @@ fi
 
 rm -rf "$PAYLOAD_DIR"
 mkdir -p "$PAYLOAD_DIR/Applications"
-cp -R "$DIRECT_APP" "$PAYLOAD_DIR/Applications/OfficeResume.app"
-cp -R "$HELPER_APP" "$PAYLOAD_DIR/Applications/OfficeResumeHelper.app"
+cp -R "$DIRECT_APP" "$INSTALL_APP_PATH"
+
+# Force app bundles to remain installed at /Applications and avoid PackageKit relocation.
+pkgbuild --analyze --root "$PAYLOAD_DIR" "$COMPONENT_PLIST"
+component_index=0
+while /usr/libexec/PlistBuddy -c "Print :$component_index" "$COMPONENT_PLIST" >/dev/null 2>&1; do
+  /usr/libexec/PlistBuddy -c "Set :$component_index:BundleIsRelocatable false" "$COMPONENT_PLIST"
+  component_index=$((component_index + 1))
+done
 
 if [[ ! -d "$PKG_SCRIPTS_DIR" ]]; then
   echo "Missing package scripts directory: $PKG_SCRIPTS_DIR" >&2
@@ -112,6 +126,7 @@ fi
 
 pkgbuild \
   --root "$PAYLOAD_DIR" \
+  --component-plist "$COMPONENT_PLIST" \
   --identifier "$PKG_IDENTIFIER" \
   --version "$PKG_VERSION" \
   --install-location "/" \

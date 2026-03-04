@@ -9,8 +9,8 @@ Use this checklist to validate local behavior end-to-end.
 - `sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg`
 
 2. Ensure apps exist:
-- `/Applications/OfficeResume.app`
-- `/Applications/OfficeResumeHelper.app`
+- `/Applications/Office Resume.app`
+- `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
 3. Ensure menu app + helper are running.
 
