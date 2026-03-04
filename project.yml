@@ -1,6 +1,7 @@
 name: OfficeResume
 options:
   minimumXcodeGenVersion: 2.44.0
+  xcodeVersion: "15.0"
 settings:
   base:
     SWIFT_VERSION: 5.10
