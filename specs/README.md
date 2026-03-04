@@ -16,7 +16,7 @@ This folder contains component-scoped technical specs to keep implementation con
 - `specs/helper-daemon.md`
   - Owns `Sources/OfficeResumeHelper/**`.
 - `specs/menu-ui.md`
-  - Owns `Sources/OfficeResumeDirect/**` and `Sources/OfficeResumeMAS/**`.
+  - Owns `Sources/OfficeResumeDirect/**`, `Sources/OfficeResumeMAS/**`, and `Sources/MenuUIShared/**`.
 - `specs/backend-worker.md`
   - Owns `OfficeResumeBackend/**`.
 

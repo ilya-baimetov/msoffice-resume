@@ -14,6 +14,7 @@ Background runtime that captures Office state and performs restore actions.
 4. Trigger auto-restore on app launch using restore engine.
 5. Expose helper control/status over XPC service with shared IPC fallback.
 6. Enforce entitlement and pause gating on capture/restore paths.
+7. Keep behavior channel-neutral except entitlement provider implementation selected by channel.
 
 ## Required Runtime Behavior
 - On app launch:
@@ -32,8 +33,8 @@ Background runtime that captures Office state and performs restore actions.
 - Keep helper LSUIElement behavior.
 - Keep helper fully headless (no visible helper UI windows).
 - Surface Accessibility trust state into daemon status.
-- Refresh Accessibility trust state periodically (about every 2 seconds) and publish status updates even without Office lifecycle events.
-- Register and host XPC listener at helper startup.
+- Refresh Accessibility trust state periodically (~2 seconds) and publish status updates without requiring lifecycle events.
+- Register and host XPC listener at startup.
 - Publish daemon status JSON to shared IPC path.
 - Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`) and route to controller handlers.
 
@@ -41,10 +42,11 @@ Background runtime that captures Office state and performs restore actions.
 - Do not perform UI logic in helper.
 - Do not bypass restore dedupe or one-shot marker rules.
 - Do not capture state when monitoring is explicitly disabled.
+- Do not introduce MAS/Direct non-billing behavior drift.
 
 ## Component Acceptance Checks
 - Launch/terminate events appear in recent event log.
 - Pause disables capture and restore triggers.
 - Inactive entitlement disables capture and restore triggers.
 - AX observer attach/detach behaves correctly across Office relaunches.
-- Toggling Accessibility permission while helper is running updates published status within a short interval (no restart required).
+- Toggling Accessibility permission while helper is running updates published status quickly.

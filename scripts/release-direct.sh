@@ -8,14 +8,19 @@ PROJECT_FILE="$REPO_ROOT/OfficeResume.xcodeproj/project.pbxproj"
 PROJECT_YML="$REPO_ROOT/project.yml"
 BUILD_DIR="$REPO_ROOT/dist/release-build"
 OUT_DIR="$REPO_ROOT/dist/release-direct"
-UNSIGNED_ZIP="$REPO_ROOT/dist/OfficeResume-direct-unsigned.zip"
-SIGNED_ZIP="$REPO_ROOT/dist/OfficeResume-direct-signed.zip"
+PAYLOAD_DIR="$OUT_DIR/payload"
+PKG_SCRIPTS_DIR="$REPO_ROOT/scripts/pkg/direct"
+UNSIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-unsigned.pkg"
+SIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-signed.pkg"
 CONFIGURATION="${CONFIGURATION:-Release}"
+PKG_IDENTIFIER="${DIRECT_PKG_IDENTIFIER:-com.pragprod.msofficeresume.direct}"
+PKG_VERSION="${DIRECT_PKG_VERSION:-$(date +%Y.%m.%d.%H%M)}"
 
 DEVELOPER_ID_APPLICATION="${DEVELOPER_ID_APPLICATION:-}"
+DEVELOPER_ID_INSTALLER="${DEVELOPER_ID_INSTALLER:-}"
 NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-}"
 
-DIRECT_APP="$OUT_DIR/OfficeResumeDirect.app"
+DIRECT_APP="$OUT_DIR/OfficeResume.app"
 HELPER_APP="$OUT_DIR/OfficeResumeHelper.app"
 DIRECT_ENTITLEMENTS="$REPO_ROOT/Sources/OfficeResumeDirect/OfficeResumeDirect.entitlements"
 HELPER_ENTITLEMENTS="$REPO_ROOT/Sources/OfficeResumeHelper/OfficeResumeHelper.entitlements"
@@ -30,13 +35,18 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v pkgbuild >/dev/null 2>&1; then
+  echo "pkgbuild is required (Xcode command line tools)." >&2
+  exit 1
+fi
+
 if [[ ! -d "$WORKSPACE" || "$PROJECT_YML" -nt "$PROJECT_FILE" ]]; then
   echo "Generating Xcode project..."
   (cd "$REPO_ROOT" && xcodegen generate)
 fi
 
 mkdir -p "$BUILD_DIR"
-rm -rf "$OUT_DIR"
+rm -rf "$OUT_DIR" "$UNSIGNED_PKG" "$SIGNED_PKG"
 mkdir -p "$OUT_DIR"
 
 build_target() {
@@ -56,90 +66,96 @@ build_target() {
   echo "Built $scheme ($CONFIGURATION). Log: $log_file"
 }
 
+sign_app_bundle() {
+  local app_path="$1"
+  local entitlements="$2"
+
+  find "$app_path/Contents/Frameworks" -type f -perm -111 -print0 2>/dev/null | while IFS= read -r -d '' binary; do
+    codesign --force --timestamp --options runtime --sign "$DEVELOPER_ID_APPLICATION" "$binary"
+  done
+
+  codesign \
+    --force \
+    --timestamp \
+    --options runtime \
+    --entitlements "$entitlements" \
+    --sign "$DEVELOPER_ID_APPLICATION" \
+    "$app_path"
+
+  codesign --verify --deep --strict --verbose=2 "$app_path"
+}
+
 echo "Building release artifacts..."
 build_target "OfficeResumeDirect"
 build_target "OfficeResumeHelper"
 
-cp -R "$BUILD_DIR/OfficeResumeDirect.app" "$DIRECT_APP"
+cp -R "$BUILD_DIR/OfficeResume.app" "$DIRECT_APP"
 cp -R "$BUILD_DIR/OfficeResumeHelper.app" "$HELPER_APP"
 
-(
-  cd "$REPO_ROOT/dist"
-  rm -f "$(basename "$UNSIGNED_ZIP")"
-  zip -qry "$(basename "$UNSIGNED_ZIP")" "$(basename "$OUT_DIR")"
-)
-
-echo "Unsigned zip: $UNSIGNED_ZIP"
-
 if [[ -n "$DEVELOPER_ID_APPLICATION" ]]; then
-  echo "Signing helper and direct apps with Developer ID certificate..."
+  echo "Signing app bundles with Developer ID Application certificate..."
+  sign_app_bundle "$HELPER_APP" "$HELPER_ENTITLEMENTS"
+  sign_app_bundle "$DIRECT_APP" "$DIRECT_ENTITLEMENTS"
+else
+  echo "DEVELOPER_ID_APPLICATION not set; app bundles remain unsigned."
+fi
 
-  find "$HELPER_APP/Contents/Frameworks" -type f -perm -111 -print0 2>/dev/null | while IFS= read -r -d '' binary; do
-    codesign --force --timestamp --options runtime --sign "$DEVELOPER_ID_APPLICATION" "$binary"
-  done
+rm -rf "$PAYLOAD_DIR"
+mkdir -p "$PAYLOAD_DIR/Applications"
+cp -R "$DIRECT_APP" "$PAYLOAD_DIR/Applications/OfficeResume.app"
+cp -R "$HELPER_APP" "$PAYLOAD_DIR/Applications/OfficeResumeHelper.app"
 
-  find "$DIRECT_APP/Contents/Frameworks" -type f -perm -111 -print0 2>/dev/null | while IFS= read -r -d '' binary; do
-    codesign --force --timestamp --options runtime --sign "$DEVELOPER_ID_APPLICATION" "$binary"
-  done
+if [[ ! -d "$PKG_SCRIPTS_DIR" ]]; then
+  echo "Missing package scripts directory: $PKG_SCRIPTS_DIR" >&2
+  exit 1
+fi
 
-  codesign \
-    --force \
-    --timestamp \
-    --options runtime \
-    --entitlements "$HELPER_ENTITLEMENTS" \
-    --sign "$DEVELOPER_ID_APPLICATION" \
-    "$HELPER_APP"
+pkgbuild \
+  --root "$PAYLOAD_DIR" \
+  --identifier "$PKG_IDENTIFIER" \
+  --version "$PKG_VERSION" \
+  --install-location "/" \
+  --scripts "$PKG_SCRIPTS_DIR" \
+  "$UNSIGNED_PKG"
 
-  codesign \
-    --force \
-    --timestamp \
-    --options runtime \
-    --entitlements "$DIRECT_ENTITLEMENTS" \
-    --sign "$DEVELOPER_ID_APPLICATION" \
-    "$DIRECT_APP"
+echo "Unsigned pkg: $UNSIGNED_PKG"
 
-  codesign --verify --deep --strict --verbose=2 "$HELPER_APP"
-  codesign --verify --deep --strict --verbose=2 "$DIRECT_APP"
+FINAL_PKG="$UNSIGNED_PKG"
+if [[ -n "$DEVELOPER_ID_INSTALLER" ]]; then
+  echo "Signing pkg with Developer ID Installer certificate..."
+  productsign --sign "$DEVELOPER_ID_INSTALLER" "$UNSIGNED_PKG" "$SIGNED_PKG"
+  pkgutil --check-signature "$SIGNED_PKG"
+  FINAL_PKG="$SIGNED_PKG"
 
   if [[ -n "$NOTARYTOOL_PROFILE" ]]; then
-    echo "Submitting signed zip for notarization..."
-    (
-      cd "$REPO_ROOT/dist"
-      rm -f "$(basename "$SIGNED_ZIP")"
-      zip -qry "$(basename "$SIGNED_ZIP")" "$(basename "$OUT_DIR")"
-    )
-
-    xcrun notarytool submit "$SIGNED_ZIP" --keychain-profile "$NOTARYTOOL_PROFILE" --wait
-
-    echo "Stapling notarization tickets..."
-    xcrun stapler staple "$HELPER_APP"
-    xcrun stapler staple "$DIRECT_APP"
-
-    (
-      cd "$REPO_ROOT/dist"
-      rm -f "$(basename "$SIGNED_ZIP")"
-      zip -qry "$(basename "$SIGNED_ZIP")" "$(basename "$OUT_DIR")"
-    )
-
-    echo "Signed + notarized zip: $SIGNED_ZIP"
+    echo "Submitting pkg for notarization..."
+    xcrun notarytool submit "$SIGNED_PKG" --keychain-profile "$NOTARYTOOL_PROFILE" --wait
+    xcrun stapler staple "$SIGNED_PKG"
+    xcrun stapler validate "$SIGNED_PKG"
+    echo "Signed + notarized pkg: $SIGNED_PKG"
   else
     echo "NOTARYTOOL_PROFILE not set; skipping notarization."
   fi
 else
-  echo "DEVELOPER_ID_APPLICATION not set; skipping signing/notarization."
+  echo "DEVELOPER_ID_INSTALLER not set; pkg remains unsigned."
 fi
 
 cat <<MSG
 
 Release output ready.
 
-Folder:
+App payload folder:
   $OUT_DIR
 
-Unsigned zip:
-  $UNSIGNED_ZIP
+Canonical installer package:
+  $FINAL_PKG
+
+Pkg metadata:
+  identifier=$PKG_IDENTIFIER
+  version=$PKG_VERSION
 
 Optional signing env vars:
   DEVELOPER_ID_APPLICATION='Developer ID Application: <Name> (<TEAMID>)'
+  DEVELOPER_ID_INSTALLER='Developer ID Installer: <Name> (<TEAMID>)'
   NOTARYTOOL_PROFILE='<stored-notarytool-profile>'
 MSG

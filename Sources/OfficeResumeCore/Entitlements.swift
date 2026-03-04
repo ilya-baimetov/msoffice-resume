@@ -7,136 +7,15 @@ public protocol RemoteEntitlementValidating {
     func fetchCurrentEntitlement() async throws -> EntitlementState
 }
 
-public struct FreePassConfig: Codable {
-    public let localModeEnabled: Bool
-    public let freePassDeviceIDs: [String]
-    public let freePassEmails: [String]
-
-    public init(
-        localModeEnabled: Bool = false,
-        freePassDeviceIDs: [String] = [],
-        freePassEmails: [String] = []
-    ) {
-        self.localModeEnabled = localModeEnabled
-        self.freePassDeviceIDs = freePassDeviceIDs
-        self.freePassEmails = freePassEmails
-    }
-}
-
-public enum EntitlementOverrideEvaluator {
-    public static func freePassFileURL(fileManager: FileManager = .default) throws -> URL {
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-
-        let directory = appSupport
-            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
-            .appendingPathComponent("entitlements", isDirectory: true)
-
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("free-pass-v1.json")
-    }
-
-    public static func currentDeviceID(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
-        if let explicit = environment["OFFICE_RESUME_DEVICE_ID"], !normalized(explicit).isEmpty {
-            return normalized(explicit)
-        }
-
-        let host = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
-        let raw = "\(NSUserName())@\(host)"
-        return normalized(raw)
-    }
-
+public enum DebugEntitlementBypassEvaluator {
     public static func overrideState(
         now: Date,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default,
-        freePassFileURL overrideFileURL: URL? = nil
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> EntitlementState? {
-        if isEnabled(environment["OFFICE_RESUME_LOCAL_MODE"]) {
-            return activeFreePassState(now: now)
-        }
-
-        let envDeviceIDs = csvSet(from: environment["OFFICE_RESUME_FREE_PASS_DEVICE_IDS"])
-        let envEmails = csvSet(from: environment["OFFICE_RESUME_FREE_PASS_EMAILS"])
-
-        let fileConfig = loadConfig(
-            fileManager: fileManager,
-            overrideFileURL: overrideFileURL
-        ) ?? FreePassConfig()
-
-        if fileConfig.localModeEnabled {
-            return activeFreePassState(now: now)
-        }
-
-        let configuredDeviceIDs = Set(fileConfig.freePassDeviceIDs.map(normalized))
-        let configuredEmails = Set(fileConfig.freePassEmails.map(normalized))
-
-        let allDeviceIDs = envDeviceIDs.union(configuredDeviceIDs)
-        let allEmails = envEmails.union(configuredEmails)
-
-        let currentDeviceID = currentDeviceID(environment: environment)
-        if allDeviceIDs.contains(currentDeviceID) {
-            return activeFreePassState(now: now)
-        }
-
-        if let rawEmail = environment["OFFICE_RESUME_USER_EMAIL"] {
-            let normalizedEmail = normalized(rawEmail)
-            if !normalizedEmail.isEmpty, allEmails.contains(normalizedEmail) {
-                return activeFreePassState(now: now)
-            }
-        }
-
-        return nil
-    }
-
-    private static func loadConfig(fileManager: FileManager, overrideFileURL: URL?) -> FreePassConfig? {
-        do {
-            let url = try overrideFileURL ?? freePassFileURL(fileManager: fileManager)
-            guard fileManager.fileExists(atPath: url.path) else {
-                return nil
-            }
-
-            let data = try Data(contentsOf: url)
-            if data.isEmpty {
-                return nil
-            }
-
-            let decoder = JSONDecoder()
-            return try decoder.decode(FreePassConfig.self, from: data)
-        } catch {
+        guard RuntimeConfiguration.isDebugEntitlementBypassEnabled(environment: environment) else {
             return nil
         }
-    }
 
-    private static func csvSet(from raw: String?) -> Set<String> {
-        guard let raw else {
-            return []
-        }
-
-        return Set(
-            raw
-                .split(separator: ",")
-                .map(String.init)
-                .map(normalized)
-                .filter { !$0.isEmpty }
-        )
-    }
-
-    private static func isEnabled(_ raw: String?) -> Bool {
-        guard let raw else {
-            return false
-        }
-
-        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "1", "true", "yes", "on":
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func activeFreePassState(now: Date) -> EntitlementState {
         let validUntil = Calendar.current.date(byAdding: .year, value: 10, to: now)
         return EntitlementState(
             isActive: true,
@@ -145,12 +24,6 @@ public enum EntitlementOverrideEvaluator {
             trialEndsAt: nil,
             lastValidatedAt: now
         )
-    }
-
-    private static func normalized(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
     }
 }
 
@@ -217,11 +90,8 @@ public actor EntitlementFileStore {
         if let baseDirectory {
             directory = baseDirectory
         } else {
-            guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-                throw CocoaError(.fileNoSuchFile)
-            }
-            directory = appSupport
-                .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+            directory = try RuntimeConfiguration
+                .appGroupOrFallbackRoot(fileManager: fileManager)
                 .appendingPathComponent("entitlements", isDirectory: true)
         }
 
@@ -278,33 +148,25 @@ public actor TrialEntitlementProvider: EntitlementProvider {
     private let remoteValidator: RemoteEntitlementValidating?
     private let now: () -> Date
     private let overrideEnvironment: [String: String]
-    private let overrideFreePassFileURL: URL?
-    private let overrideFileManager: FileManager
 
     public init(
         store: EntitlementFileStore,
         remoteValidator: RemoteEntitlementValidating? = nil,
         now: @escaping () -> Date = Date.init,
-        overrideEnvironment: [String: String] = ProcessInfo.processInfo.environment,
-        overrideFreePassFileURL: URL? = nil,
-        overrideFileManager: FileManager = .default
+        overrideEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.store = store
         self.remoteValidator = remoteValidator
         self.now = now
         self.overrideEnvironment = overrideEnvironment
-        self.overrideFreePassFileURL = overrideFreePassFileURL
-        self.overrideFileManager = overrideFileManager
     }
 
     public func currentState() async -> EntitlementState {
         let now = now()
 
-        if let override = EntitlementOverrideEvaluator.overrideState(
+        if let override = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
-            environment: overrideEnvironment,
-            fileManager: overrideFileManager,
-            freePassFileURL: overrideFreePassFileURL
+            environment: overrideEnvironment
         ) {
             return override
         }
@@ -324,11 +186,9 @@ public actor TrialEntitlementProvider: EntitlementProvider {
     public func refresh() async throws -> EntitlementState {
         let now = now()
 
-        if let override = EntitlementOverrideEvaluator.overrideState(
+        if let override = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
-            environment: overrideEnvironment,
-            fileManager: overrideFileManager,
-            freePassFileURL: overrideFreePassFileURL
+            environment: overrideEnvironment
         ) {
             try? await store.saveCachedState(override)
             return override

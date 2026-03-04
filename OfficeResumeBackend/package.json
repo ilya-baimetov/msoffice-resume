@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "node --check src/worker.js",
     "test": "node --test"
   }
 }

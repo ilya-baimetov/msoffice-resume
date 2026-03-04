@@ -11,7 +11,7 @@
 v1 support:
 - Word/Excel/PowerPoint: document-level restore
 - Outlook: lifecycle + window metadata capture; restore = relaunch only
-- OneNote: unsupported (no dedicated menu UI line in v1)
+- OneNote: unsupported (no dedicated menu UI row)
 
 ## 2. Repository and Target Layout (Planned)
 ```
@@ -23,11 +23,11 @@ OfficeResume.xcworkspace
   OfficeResumeBackend/   # Cloudflare Worker project for direct entitlements
 ```
 
-Two app schemes/targets:
+Two app schemes/targets remain:
 1. `OfficeResumeMAS`
 2. `OfficeResumeDirect`
 
-Both use shared `OfficeResumeCore` and `OfficeResumeHelper`.
+Both use shared `OfficeResumeCore`, `OfficeResumeHelper`, and shared menu UI. Non-billing divergence is forbidden unless explicitly re-scoped.
 
 ## 2.1 Componentized Spec Set
 Use this file as the system-level contract, then apply component specs for scoped implementation:
@@ -118,46 +118,45 @@ XPC-facing API (helper service):
 ## 5. Module Responsibilities
 
 ### 5.1 OfficeResumeHelper
-- Register for `NSWorkspace` app launch/terminate notifications.
-- Register `AXObserver` instances per running Office process.
-- Capture state on Accessibility notifications as the primary trigger path.
+- Observe lifecycle events via `NSWorkspace` launch/terminate notifications.
+- Register `AXObserver` per running Office process.
+- Capture state on Accessibility events as primary trigger.
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
 - Enforce one-shot restore marker per app launch instance.
-- Enforce entitlement gating (`canMonitor` and `canRestore`).
-- Run as a headless LSUIElement process (no visible helper window).
+- Enforce entitlement gating (`canMonitor`, `canRestore`).
+- Run as LSUIElement (headless; no visible window).
 
 ### 5.2 MenuBarApp
-- Run as a dockless LSUIElement menu bar app.
-- Keep a shared menu UI implementation used by both Direct and MAS targets.
-- Present a standard macOS menu-style `MenuBarExtra` (not custom window-style) with:
+- Run as dockless LSUIElement menu bar app.
+- Use one shared menu UI implementation for MAS and Direct.
+- Present standard `MenuBarExtra` menu style with:
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
-  - `Advanced` submenu:
-    - `Clear Snapshot`
-    - `Open Debug Log in Console`
+  - `Advanced > Clear Snapshot`
+  - `Advanced > Open Debug Log in Console`
   - `Quit`
-- Show Accessibility status as:
-  - `Accessibility: OK` when trusted
-  - `Accessibility: click to fix` (click opens system settings) when not trusted
-- Start helper via `SMAppService` (login item).
-- `Quit` must terminate both menu app and helper process.
+- Show accessibility status:
+  - `Accessibility: OK`
+  - `Accessibility: click to fix` (opens system settings)
+- Start helper via `SMAppService` and sibling-launch fallback.
+- `Quit` must terminate both menu app and helper.
 
 ### 5.3 Core Storage + Engine
-- Snapshot storage, event logging, temp artifact indexing.
-- Diff engine for dedupe restore.
-- Purge engine for stale temp artifacts.
+- Snapshot storage, event log persistence, temp artifact indexing.
+- Dedupe restore planning and one-shot marker handling.
+- Artifact purge for stale temp data.
 
 ### 5.4 Billing Providers
 - `StoreKitEntitlementProvider` (MAS)
 - `StripeEntitlementProvider` (Direct)
-- Shared `EntitlementState` model and cache policy.
+- Shared `EntitlementState` model + 7-day offline grace policy.
 
 ## 6. Event Capture Model
 
 ### 6.1 Lifecycle Capture
 - Observe Office app launches/quits via `NSWorkspace`.
-- Map bundle IDs:
+- Bundle ID map:
   - `com.microsoft.Word`
   - `com.microsoft.Excel`
   - `com.microsoft.Powerpoint`
@@ -165,69 +164,64 @@ XPC-facing API (helper service):
   - `com.microsoft.onenote.mac`
 
 ### 6.2 Accessibility Capture (Primary)
-- Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt on first run).
-- Refresh trust status periodically while helper is running (target cadence: every ~2 seconds) so menu status reflects permission toggles without requiring app restart.
-- On app launch, attach `AXObserver` to Office PID and subscribe to:
+- Require accessibility trust (`AXIsProcessTrustedWithOptions` prompt at startup).
+- Refresh trust status periodically while helper runs (~2s cadence).
+- On app launch, attach `AXObserver` and subscribe to:
   - `kAXWindowCreatedNotification`
   - `kAXUIElementDestroyedNotification`
   - `kAXFocusedWindowChangedNotification`
   - `kAXTitleChangedNotification`
-- Coalesce event bursts with per-app debounce (~500-800 ms target).
+- Debounce per app (target 500-800ms).
 - On debounce fire:
   1. Fetch current app state from adapter.
   2. Compare with latest stored snapshot.
-  3. Persist if changed.
-  4. Emit `stateCaptured` event with source `ax`.
+  3. Persist on change.
+  4. Emit `stateCaptured` event source `ax`.
 
 ## 7. Office Adapter Behavior
 
 ### 7.1 Word Adapter
-- AppleScript queries:
-  - `documents`
-  - `name`
-  - `full name` / `posix full name` (if available)
-  - `saved`
-- Restore:
-  - Open missing document paths only.
-- Untitled handling:
-  - Force-save untitled docs into app storage `unsaved/`.
+- AppleScript queries: `documents`, `name`, `full name`/`posix full name`, `saved`.
+- Restore: open missing paths only.
+- Untitled handling: force-save to `unsaved/`.
 
 ### 7.2 Excel Adapter
 - Query `workbooks`/`documents`, `name`, `full name`, `saved`.
-- Restore only missing workbook paths.
+- Restore missing workbook paths only.
 - Force-save untitled workbooks to `unsaved/`.
 
 ### 7.3 PowerPoint Adapter
 - Query `presentations`, `name`, `full name`, `saved`.
-- Restore only missing presentation paths.
+- Restore missing presentation paths only.
 - Force-save untitled presentations to `unsaved/`.
 
 ### 7.4 Outlook Adapter (Limited)
-- Capture lifecycle and window metadata (`name`, `id`, `bounds`, visibility where available).
-- Restore action: relaunch Outlook app only.
-- No message/item-level restore in v1.
+- Capture lifecycle and window metadata.
+- Restore action: activate/relaunch Outlook only.
+- No message/item-level reconstruction in v1.
 
 ### 7.5 OneNote Adapter
-- Return unsupported capability status.
-- No fetch/restore logic beyond lifecycle event visibility.
+- Unsupported capability status only.
+- No fetch/restore beyond lifecycle visibility.
 
 ## 8. Restore Engine
 
-Algorithm on Office app launch:
-1. Check entitlement (`canRestore` and `canMonitor` as required by policy).
-2. Load latest snapshot for app.
-3. If no snapshot, return.
-4. Compute launch instance key from process start metadata.
-5. If restore already attempted for this launch key, return.
-6. Query current open docs (where supported).
-7. Diff snapshot docs minus currently open docs.
-8. Open only missing docs.
-9. Mark `restoreAttemptedForLaunch=true` for launch key context.
-10. Log per-item success/failure and summary.
+On Office app launch:
+1. Refresh entitlement.
+2. If paused or cannot restore, return.
+3. Load latest snapshot for app.
+4. If none, return.
+5. Build launch instance key.
+6. If one-shot marker already set, return.
+7. Query currently open docs where applicable.
+8. Diff snapshot docs against currently open docs.
+9. Open only missing docs.
+10. Mark restore attempted for launch key.
+11. Emit success/failure events with per-item details.
 
 Failure handling:
 - Continue after per-document errors.
-- Emit `restoreFailed` with diagnostic details.
+- Emit `restoreFailed` diagnostics for failed paths.
 
 ## 9. Unsaved Temp Artifact Handling
 
@@ -242,50 +236,49 @@ Failure handling:
 - last referenced snapshot ID
 
 ### 9.2 Force-save policy
-- Run during AX-triggered capture for W/E/P when unsaved docs detected.
-- Save artifacts into:
-  - `<stateRoot>/unsaved/<artifact-id>.<ext>`
-- Add/update mapping in index.
+- Trigger during AX-capture cycle for W/E/P when unsaved docs detected.
+- Save into `<stateRoot>/unsaved/<artifact-id>.<ext>`.
+- Persist/update index mapping.
 
 ### 9.3 Purge policy
 Purge artifact when:
-1. Not referenced by current latest snapshot, and
+1. Not referenced by latest snapshot, and
 2. No pending restore flow requires it.
 
-Also purge orphan index entries pointing to missing files.
+Purge orphan index entries pointing to missing files.
 
 ## 10. Storage Layout
 
-### 10.1 Direct target root
-`~/Library/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
-
-### 10.2 MAS target root
-App Group container root mirror:
+### 10.1 Unified primary root (MAS + Direct)
 `<AppGroupContainer>/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
 
+### 10.2 Dev-only fallback root (unsigned local runs)
+`~/Library/Application Support/com.pragprod.msofficeresume/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
+
 ### 10.3 Files
-- `snapshot-v1.json`: latest app snapshot
-- `events-v1.ndjson`: append-only local events (rotation optional in v1)
-- `unsaved-index-v1.json`: unsaved artifact map
+- `snapshot-v1.json`: latest snapshot
+- `events-v1.ndjson`: append-only local events
+- `unsaved-index-v1.json`: unsaved artifact index
 - `unsaved/`: force-saved temp documents
 
 ## 11. Entitlements and Permissions
 
 Required:
-- `NSAppleEventsUsageDescription` in both app targets.
+- `NSAppleEventsUsageDescription` in app/helper targets.
 - Accessibility permission/trust for full capture fidelity.
 - App Group entitlement shared by menu app + helper.
-- Login item entitlement/registration via `SMAppService`.
-- `LSUIElement=YES` for menu app and helper targets so neither shows a Dock icon.
+- Login item registration via `SMAppService`.
+- `LSUIElement=YES` for menu app and helper targets.
 
 MAS-specific:
-- App Sandbox enabled.
-- Apple Events targeting/exceptions for Office bundle IDs as needed.
-- Document explicit risk: MAS review may reject/limit broad automation cases.
+- App Sandbox enabled for menu app and helper.
+- Apple Events targeting/exceptions for Office bundle IDs as required.
+- Document App Review risk for automation permissions.
 
 Direct-specific:
+- App Sandbox enabled for menu app and helper.
 - Network access for Stripe/backend calls.
-- No sandbox constraints required by MAS policy.
+- Release path assumes signed entitlement-capable app-group runtime.
 
 ## 12. Billing and Entitlement Architecture
 
@@ -301,108 +294,101 @@ struct EntitlementState: Codable {
 }
 ```
 
-Rule:
-- If `lastValidatedAt` older than 7 days and cannot refresh, set inactive.
-- Inactive => disable monitoring and restore; UI remains readable.
+Rules:
+- Offline grace: if refresh fails and last validation <= 7 days, remain active.
+- Inactive entitlement disables capture and restore; status/history remain readable.
 
 ### 12.2 MAS (StoreKit 2)
-- Single subscription group:
+- Subscription group:
   - `officeresume.monthly`
   - `officeresume.yearly`
-- 14-day introductory trial for both.
-- Validate current entitlements on startup + periodic refresh.
+- 14-day introductory trial.
+- Validate current entitlements at startup and periodic refresh.
 
 ### 12.3 Direct (Stripe + Worker)
 - Stripe prices:
   - monthly `$5`
   - yearly `$50`
-  - each with `trial_period_days=14`
-- Auth:
-  - Email magic link
-- Cloudflare Worker endpoints:
+  - `trial_period_days=14`
+- Auth: email magic link.
+- Worker endpoints:
   - `POST /auth/request-link`
   - `POST /auth/verify`
   - `GET /entitlements/current`
   - `POST /webhooks/stripe`
-- D1/KV store:
-  - users
-  - subscriptions
-  - devices/sessions
-  - entitlement cache records
-
-No cross-channel purchase linking in v1.
+- Free-pass policy (Direct): backend-authoritative allowlist tied to verified session identity.
+- Production client path must not grant free-pass via local file/env overrides.
 
 ## 13. XPC Contract Details
 
 ### 13.0 Transport
-- Preferred control/status path: XPC (when available).
-- Required fallback path (must work in local/direct runs):
-  - helper publishes daemon status JSON to shared IPC file:
-    - app-group container path when available
-    - fallback: `~/Library/Application Support/com.pragprod.msofficeresume/ipc/daemon-status-v1.json`
-  - menu reads shared status file when XPC status fetch fails.
-  - menu posts helper commands via distributed notifications:
-    - `com.pragprod.msofficeresume.command.pause`
-    - `com.pragprod.msofficeresume.command.restore-now`
-    - `com.pragprod.msofficeresume.command.clear-snapshot`
-  - helper listens to those distributed notifications and executes the same command handlers.
+- Preferred: XPC request/reply for status + commands.
+- Required fallback:
+  - helper publishes status JSON to shared IPC path
+  - app reads shared status when XPC fetch fails
+  - app posts distributed command notifications
+  - helper subscribes and routes to same handlers
+
+Shared IPC fallback path rules:
+- primary: app-group container `ipc/`
+- dev-only unsigned fallback: `~/Library/Application Support/com.pragprod.msofficeresume/ipc/`
 
 ### 13.1 Status DTO
-- paused flag
+Must include:
+- pause flag
 - helper running flag
 - entitlement summary
-- accessibility permission status
+- accessibility trust state
 - per-app latest snapshot timestamps
-- unsupported apps list (includes OneNote)
+- unsupported apps list
 
 ### 13.2 Commands
-- `restoreNow(app?)`: if nil, restore all supported apps with snapshots.
-- `clearSnapshot(app?)`: clear one or all snapshots and related unsaved artifacts not referenced.
-- `setPaused(Bool)`: toggles capture and restore triggers.
+- `restoreNow(app?)`
+- `clearSnapshot(app?)`
+- `setPaused(Bool)`
 
 ## 14. Build Flavor Configuration
-- Shared compile-time flags:
+- Compile flags:
   - `BILLING_MAS`
   - `BILLING_DIRECT`
-- Separate entitlements plist files per app target.
-- Separate product IDs/config constants per channel.
-- Common UI and helper code path wherever possible.
+- Separate entitlements plist per target where required.
+- Separate bundle IDs per distribution channel.
+- Common UI/helper/core behavior across channels.
+- Runtime app process/display naming unified as `OfficeResume`.
 
 ## 15. Error Handling and Logging
 - Local-only structured logs.
-- Include:
-  - timestamp
-  - app
-  - operation
-  - success/failure
-  - error code/message
-- Expose a menu action that opens local debug logs in Console.
+- Include timestamp, app, operation, result, and error context.
+- Menu action opens local debug log in Console.
 - No remote logging pipeline in v1.
 
 ## 16. Test Matrix
 
 1. Launch/quit capture across all Office apps.
-2. Accessibility-trusted path attaches AX observers and captures document/window transitions.
+2. Accessibility-trusted path attaches AX observers and captures transitions.
 3. Accessibility-denied path degrades gracefully and surfaces clear status.
 4. W/E/P saved doc snapshot capture and diff correctness.
 5. Relaunch restore dedupe opens only missing docs.
 6. One-shot marker blocks repeat restore in same launch instance.
 7. Untitled force-save creates artifact + index mapping.
-8. Unsaved artifact restore works and purges when stale.
-9. Outlook relaunch-only flow executes without message-level restore attempts.
-10. OneNote remains unsupported and no OneNote restore is attempted.
+8. Unsaved artifact restore works and stale purge executes.
+9. Outlook relaunch-only flow executes without message-level restore.
+10. OneNote remains unsupported.
 11. Trial active allows monitor/restore.
-12. Trial/subscription inactive disables monitor/restore, preserves read-only history.
-13. MAS StoreKit entitlement refresh logic correct.
-14. Direct Stripe entitlement fetch/refresh logic correct.
-15. Offline grace expiration at > 7 days disables paid features.
-16. Pause tracking stops capture and automatic restore triggers.
-17. Clear snapshot removes active snapshot state and relevant artifacts.
-18. Verify no remote telemetry calls exist in app runtime.
+12. Inactive entitlement disables monitor/restore while keeping read-only status/history.
+13. MAS StoreKit refresh logic correct.
+14. Direct Stripe entitlement refresh logic correct.
+15. Offline grace expiration > 7 days disables paid features.
+16. Pause tracking stops capture and auto-restore triggers.
+17. Clear snapshot removes active restore state and relevant artifacts.
+18. No remote telemetry calls emitted.
+19. Direct free-pass only granted when backend allowlist/session says active.
+20. Direct `.pkg` install and upgrade path works for repeat installs.
 
 ## 17. Acceptance Criteria
-- All required FRs in `PRD.md` implemented.
-- Support matrix behavior exactly matches v1 scope.
-- Both MAS and direct schemes build and run.
-- Helper remains stable during long-running AX monitoring sessions.
-- Test matrix pass (automated + manual scenarios).
+- All PRD required behaviors implemented.
+- Support matrix behavior matches v1 scope exactly.
+- Both MAS and Direct schemes build and run.
+- Helper is stable during long-running AX sessions.
+- Test matrix passes (automated + manual scenarios).
+- Docs/spec updates remain aligned with implementation.

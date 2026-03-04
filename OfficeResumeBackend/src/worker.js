@@ -16,7 +16,9 @@ function parseBearerToken(request) {
 }
 
 function randomToken() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return hex(bytes.buffer);
 }
 
 function hex(buffer) {

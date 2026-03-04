@@ -49,34 +49,66 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' }}
     steps:
-      - name: Validate PR includes eval scorecard path
+      - name: Validate PR body guardrails
         shell: bash
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
 
+          extract_value() {
+            local label="$1"
+            local line
+            line="$(printf '%s\n' "$PR_BODY" | grep -F -- "- ${label}" | head -n1 || true)"
+            if [[ -z "$line" ]]; then
+              echo ""
+              return
+            fi
+            printf '%s' "${line#- ${label}}"
+          }
+
+          is_placeholder() {
+            local value="$1"
+            local lowered
+            lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            [[ -z "$value" || "$lowered" == "tbd" || "$lowered" == "todo" || "$lowered" == "n/a" || "$lowered" == "none" ]]
+          }
+
           if [[ -z "${PR_BODY//[$'\t\r\n ']}" ]]; then
             echo "PR body is empty. Include the PR template and fill the eval scorecard section."
             exit 1
           fi
 
-          scorecard_line="$(printf '%s\n' "$PR_BODY" | grep -E '^- Scorecard file/path for this PR:' | head -n1 || true)"
-          if [[ -z "$scorecard_line" ]]; then
+          scorecard_value="$(extract_value 'Scorecard file/path for this PR:')"
+          scorecard_value="$(printf '%s' "$scorecard_value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          if is_placeholder "$scorecard_value"; then
             echo "Missing required line: '- Scorecard file/path for this PR:'"
             exit 1
           fi
 
-          scorecard_value="$(printf '%s' "$scorecard_line" | sed -E 's/^- Scorecard file\/path for this PR:[[:space:]]*//')"
-          scorecard_value="$(printf '%s' "$scorecard_value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-          lower_value="$(printf '%s' "$scorecard_value" | tr '[:upper:]' '[:lower:]')"
+          copilot_url="$(extract_value 'Copilot review URL:')"
+          copilot_url="$(printf '%s' "$copilot_url" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          if is_placeholder "$copilot_url"; then
+            echo "Copilot review URL is empty or placeholder."
+            exit 1
+          fi
 
-          if [[ -z "$scorecard_value" || "$lower_value" == "tbd" || "$lower_value" == "todo" || "$lower_value" == "n/a" || "$lower_value" == "none" ]]; then
-            echo "Scorecard path value is empty or placeholder. Provide a real path."
+          copilot_findings="$(extract_value 'Copilot high/medium findings summary:')"
+          copilot_findings="$(printf '%s' "$copilot_findings" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          if is_placeholder "$copilot_findings"; then
+            echo "Copilot findings summary is empty or placeholder."
+            exit 1
+          fi
+
+          copilot_disposition="$(extract_value 'Copilot disposition (fixed or explicitly accepted with reason):')"
+          copilot_disposition="$(printf '%s' "$copilot_disposition" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          if is_placeholder "$copilot_disposition"; then
+            echo "Copilot disposition is empty or placeholder."
             exit 1
           fi
 
           echo "PR scorecard path detected: $scorecard_value"
+          echo "Copilot review URL detected: $copilot_url"
 
   spec-drift-guardrails:
     name: spec-drift-guardrails
@@ -219,6 +251,30 @@ jobs:
           xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-mas.txt
           grep -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
 
+      - name: Static analysis MAS scheme (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace "${{ steps.discover.outputs.workspace }}" \
+            -scheme OfficeResumeMAS \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
+
+      - name: Static analysis MAS scheme (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${{ steps.discover.outputs.project }}" \
+            -scheme OfficeResumeMAS \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
+
       - name: Build and test MAS scheme (workspace)
         if: ${{ steps.discover.outputs.workspace != '' }}
         run: |
@@ -296,6 +352,30 @@ jobs:
           xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-direct.txt
           grep -q "OfficeResumeDirect" /tmp/xcode-list-direct.txt
 
+      - name: Static analysis Direct scheme (workspace)
+        if: ${{ steps.discover.outputs.workspace != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace "${{ steps.discover.outputs.workspace }}" \
+            -scheme OfficeResumeDirect \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
+
+      - name: Static analysis Direct scheme (project)
+        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${{ steps.discover.outputs.project }}" \
+            -scheme OfficeResumeDirect \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
+
       - name: Build and test Direct scheme (workspace)
         if: ${{ steps.discover.outputs.workspace != '' }}
         run: |
@@ -348,6 +428,11 @@ jobs:
           else
             npm install
           fi
+
+      - name: Run backend static checks
+        if: ${{ hashFiles('OfficeResumeBackend/package.json') }}
+        working-directory: OfficeResumeBackend
+        run: npm run lint
 
       - name: Run backend tests
         if: ${{ hashFiles('OfficeResumeBackend/package.json') }}

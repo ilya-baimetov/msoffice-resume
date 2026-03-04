@@ -1,6 +1,6 @@
 # msoffice-resume
 
-Office Resume v1 planning docs are in:
+Office Resume planning and implementation docs:
 
 - `AGENTS.md`
 - `PRD.md`
@@ -12,48 +12,41 @@ Office Resume v1 planning docs are in:
 - `specs/backend-worker.md`
 - `prompt.md`
 
-Service/account setup instructions are in:
+## Docs/Eval Utilities
 
-- `services-setup.md`
-- `docs/local-functional-checklist.md`
-- `docs/release-hardening.md`
-- `docs/vibe-coding-methodology.md`
-- `docs/eval-scorecard-template.md`
+- Docs consistency checker: `./scripts/eval-docs-consistency.sh`
+- UI guardrails checker: `./scripts/eval-ui-guardrails.sh`
+- Methodology/docs:
+  - `docs/vibe-coding-methodology.md`
+  - `docs/eval-scorecard-template.md`
+  - `docs/local-functional-checklist.md`
+  - `docs/release-hardening.md`
 
-Docs consistency checker:
+## Local Dev Install (No Apple Developer Account Required)
 
-- `scripts/eval-docs-consistency.sh`
-
-Run it from repo root:
-
-```bash
-./scripts/eval-docs-consistency.sh
-```
-
-## Local Free-Pass Build (Direct + Helper)
-
-To build a locally installable package (no Apple Developer account required):
+Build an unsigned local dev installer package:
 
 ```bash
-./scripts/package-local-free-pass.sh
+./scripts/package-local-dev.sh
 ```
 
-This produces:
-
-- `dist/local-free-pass/`
-- `dist/OfficeResume-local-free-pass.zip`
-
-Install and launch in free-pass mode:
+Install locally:
 
 ```bash
-./dist/local-free-pass/install-local-free-pass.sh
+sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
 ```
 
-Default install path is `~/Applications/OfficeResumeLocal`.
-Free-pass is enabled via:
-`~/Library/Application Support/com.pragprod.msofficeresume/entitlements/free-pass-v1.json`.
+Installed paths:
 
-## Direct Release Build (Sign + Notarize Optional)
+- `/Applications/OfficeResume.app`
+- `/Applications/OfficeResumeHelper.app`
+
+Notes:
+
+- Local dev package is convenience-only and non-canonical for public distribution.
+- Canonical Direct distribution artifact is the pkg produced by `./scripts/release-direct.sh`.
+
+## Direct Release Packaging (.pkg)
 
 Build release artifacts:
 
@@ -61,52 +54,60 @@ Build release artifacts:
 ./scripts/release-direct.sh
 ```
 
-Optional environment variables for signing/notarization:
+Outputs:
+
+- `dist/OfficeResume-direct-unsigned.pkg`
+- `dist/release-direct/` (staged app payload)
+
+Optional signing/notarization env vars:
 
 - `DEVELOPER_ID_APPLICATION`
+- `DEVELOPER_ID_INSTALLER`
 - `NOTARYTOOL_PROFILE`
 
-## Build and Test Process
+## Build and Test
 
-### Local (developer machine)
-Once the Xcode project is scaffolded, run:
+Generate project (if needed):
 
 ```bash
 xcodegen generate
-xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeMAS -destination 'platform=macOS' build test
-xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeDirect -destination 'platform=macOS' build test
 ```
 
-If only a project exists (no workspace), use `-project <path>.xcodeproj`.
+Run macOS builds/tests:
 
-For the direct backend (`OfficeResumeBackend`):
+```bash
+xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeMAS -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build test
+xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeDirect -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build test
+xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeHelper -destination 'platform=macOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+Run backend checks:
 
 ```bash
 cd OfficeResumeBackend
 npm ci || npm install
+npm run lint
 npm test
 ```
 
-### CI (GitHub Actions)
+## CI
+
 Workflow: `.github/workflows/ci.yml`
 
-Runs on every push to PRs targeting `main`, and on pushes to `main`/`codex/**`.
+Primary jobs:
 
-Jobs:
 - `docs-guardrails`
-- `build-test-mas`
-- `build-test-direct`
-- `backend-tests`
+- `ui-guardrails`
+- `pr-scorecard-guardrail` (PR body + Copilot metadata)
+- `spec-drift-guardrails`
+- `build-test-mas` (includes `xcodebuild analyze`)
+- `build-test-direct` (includes `xcodebuild analyze`)
+- `backend-tests` (includes backend lint + tests)
 
-Notes:
-- Until Xcode/backend scaffolding exists, build/test jobs skip cleanly.
-- After scaffolding exists, CI enforces scheme presence and runs real build/tests.
+## Debug-Only Entitlement Bypass (Optional)
 
-## PR Gate
-`main` should require CI status checks before merge.
+For local debug builds only, an explicit bypass can be enabled with:
 
-Recommended required checks:
-- `docs-guardrails`
-- `build-test-mas`
-- `build-test-direct`
-- `backend-tests`
+- `OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS=1`
+
+This bypass is non-default and not part of production release behavior.

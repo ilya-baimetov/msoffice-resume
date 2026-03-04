@@ -33,7 +33,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.mas
+        PRODUCT_NAME: OfficeResume
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OfficeResume
+        INFOPLIST_KEY_CFBundleName: OfficeResume
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Office Resume requires Apple Events to monitor and restore Microsoft Office applications.
         CODE_SIGN_ENTITLEMENTS: Sources/OfficeResumeMAS/OfficeResumeMAS.entitlements
@@ -51,7 +54,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.direct
+        PRODUCT_NAME: OfficeResume
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OfficeResume
+        INFOPLIST_KEY_CFBundleName: OfficeResume
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Office Resume requires Apple Events to monitor and restore Microsoft Office applications.
         CODE_SIGN_ENTITLEMENTS: Sources/OfficeResumeDirect/OfficeResumeDirect.entitlements
@@ -68,7 +74,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.helper
+        PRODUCT_NAME: OfficeResumeHelper
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OfficeResumeHelper
+        INFOPLIST_KEY_CFBundleName: OfficeResumeHelper
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Office Resume requires Apple Events to monitor and restore Microsoft Office applications.
         CODE_SIGN_ENTITLEMENTS: Sources/OfficeResumeHelper/OfficeResumeHelper.entitlements
