@@ -17,6 +17,18 @@ Service/account setup instructions are in:
 - `services-setup.md`
 - `docs/local-functional-checklist.md`
 - `docs/release-hardening.md`
+- `docs/vibe-coding-methodology.md`
+- `docs/eval-scorecard-template.md`
+
+Docs consistency checker:
+
+- `scripts/eval-docs-consistency.sh`
+
+Run it from repo root:
+
+```bash
+./scripts/eval-docs-consistency.sh
+```
 
 ## Local Free-Pass Build (Direct + Helper)
 

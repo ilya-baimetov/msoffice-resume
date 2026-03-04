@@ -25,23 +25,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required docs exist
+      - name: Run docs consistency checker
+        shell: bash
         run: |
           set -euo pipefail
-          test -f AGENTS.md
-          test -f PRD.md
-          test -f spec.md
-          test -f prompt.md
-          test -f specs/contracts.md
-          test -f specs/core.md
-          test -f specs/helper-daemon.md
-          test -f specs/menu-ui.md
-          test -f specs/backend-worker.md
+          bash scripts/eval-docs-consistency.sh
 
-      - name: Validate locked bundle prefix
+  pr-scorecard-guardrail:
+    name: pr-scorecard-guardrail
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Validate PR includes eval scorecard path
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
-          grep -En "com\.pragprod\.msofficeresume" AGENTS.md
+
+          if [[ -z "${PR_BODY//[$'\t\r\n ']}" ]]; then
+            echo "PR body is empty. Include the PR template and fill the eval scorecard section."
+            exit 1
+          fi
+
+          scorecard_line="$(printf '%s\n' "$PR_BODY" | grep -E '^- Scorecard file/path for this PR:' | head -n1 || true)"
+          if [[ -z "$scorecard_line" ]]; then
+            echo "Missing required line: '- Scorecard file/path for this PR:'"
+            exit 1
+          fi
+
+          scorecard_value="$(printf '%s' "$scorecard_line" | sed -E 's/^- Scorecard file\/path for this PR:[[:space:]]*//')"
+          scorecard_value="$(printf '%s' "$scorecard_value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          lower_value="$(printf '%s' "$scorecard_value" | tr '[:upper:]' '[:lower:]')"
+
+          if [[ -z "$scorecard_value" || "$lower_value" == "tbd" || "$lower_value" == "todo" || "$lower_value" == "n/a" || "$lower_value" == "none" ]]; then
+            echo "Scorecard path value is empty or placeholder. Provide a real path."
+            exit 1
+          fi
+
+          echo "PR scorecard path detected: $scorecard_value"
 
   spec-drift-guardrails:
     name: spec-drift-guardrails
