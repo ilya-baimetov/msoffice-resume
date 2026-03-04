@@ -7,6 +7,48 @@ Office Resume v1 planning docs are in:
 - `spec.md`
 - `prompt.md`
 
+Service/account setup instructions are in:
+
+- `services-setup.md`
+- `docs/local-functional-checklist.md`
+- `docs/release-hardening.md`
+
+## Local Free-Pass Build (Direct + Helper)
+
+To build a locally installable package (no Apple Developer account required):
+
+```bash
+./scripts/package-local-free-pass.sh
+```
+
+This produces:
+
+- `dist/local-free-pass/`
+- `dist/OfficeResume-local-free-pass.zip`
+
+Install and launch in free-pass mode:
+
+```bash
+./dist/local-free-pass/install-local-free-pass.sh
+```
+
+Default install path is `~/Applications/OfficeResumeLocal`.
+Free-pass is enabled via:
+`~/Library/Application Support/com.pragprod.msofficeresume/entitlements/free-pass-v1.json`.
+
+## Direct Release Build (Sign + Notarize Optional)
+
+Build release artifacts:
+
+```bash
+./scripts/release-direct.sh
+```
+
+Optional environment variables for signing/notarization:
+
+- `DEVELOPER_ID_APPLICATION`
+- `NOTARYTOOL_PROFILE`
+
 ## Build and Test Process
 
 ### Local (developer machine)

@@ -28,17 +28,23 @@ public struct DaemonStatusDTO: Codable {
     public let pollingInterval: PollingInterval
     public let helperRunning: Bool
     public let entitlementActive: Bool
+    public let latestSnapshotCapturedAt: [OfficeApp: Date]
+    public let unsupportedApps: [OfficeApp]
 
     public init(
         isPaused: Bool,
         pollingInterval: PollingInterval,
         helperRunning: Bool,
-        entitlementActive: Bool
+        entitlementActive: Bool,
+        latestSnapshotCapturedAt: [OfficeApp: Date],
+        unsupportedApps: [OfficeApp]
     ) {
         self.isPaused = isPaused
         self.pollingInterval = pollingInterval
         self.helperRunning = helperRunning
         self.entitlementActive = entitlementActive
+        self.latestSnapshotCapturedAt = latestSnapshotCapturedAt
+        self.unsupportedApps = unsupportedApps
     }
 }
 
@@ -58,10 +64,12 @@ public struct LifecycleEventDTO: Codable {
     public let app: OfficeApp
     public let type: LifecycleEventType
     public let timestamp: Date
+    public let details: [String: String]
 
-    public init(app: OfficeApp, type: LifecycleEventType, timestamp: Date) {
+    public init(app: OfficeApp, type: LifecycleEventType, timestamp: Date, details: [String: String]) {
         self.app = app
         self.type = type
         self.timestamp = timestamp
+        self.details = details
     }
 }

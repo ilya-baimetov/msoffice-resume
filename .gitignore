@@ -6,6 +6,15 @@
 # Build artifacts
 DerivedData/
 build/
+dist/
 
 # macOS
 .DS_Store
+
+# Node
+node_modules/
+OfficeResumeBackend/node_modules/
+
+# Local env files
+.env
+.env.*
