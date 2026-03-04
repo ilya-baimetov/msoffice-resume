@@ -1,0 +1,98 @@
+name: OfficeResume
+options:
+  minimumXcodeGenVersion: 2.44.0
+settings:
+  base:
+    SWIFT_VERSION: 5.10
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  OfficeResumeCore:
+    type: framework
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/OfficeResumeCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.core
+        GENERATE_INFOPLIST_FILE: YES
+
+  OfficeResumeMAS:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/OfficeResumeMAS
+    dependencies:
+      - target: OfficeResumeCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.mas
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Office Resume requires Apple Events to monitor and restore Microsoft Office applications.
+
+  OfficeResumeDirect:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/OfficeResumeDirect
+    dependencies:
+      - target: OfficeResumeCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.direct
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Office Resume requires Apple Events to monitor and restore Microsoft Office applications.
+
+  OfficeResumeHelper:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/OfficeResumeHelper
+    dependencies:
+      - target: OfficeResumeCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pragprod.msofficeresume.helper
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+
+  OfficeResumeCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Tests/OfficeResumeCoreTests
+    dependencies:
+      - target: OfficeResumeCore
+
+schemes:
+  OfficeResumeMAS:
+    build:
+      targets:
+        OfficeResumeMAS: all
+        OfficeResumeCore: all
+    test:
+      gatherCoverageData: true
+      targets:
+        - name: OfficeResumeCoreTests
+
+  OfficeResumeDirect:
+    build:
+      targets:
+        OfficeResumeDirect: all
+        OfficeResumeCore: all
+    test:
+      gatherCoverageData: true
+      targets:
+        - name: OfficeResumeCoreTests
+
+  OfficeResumeHelper:
+    build:
+      targets:
+        OfficeResumeHelper: all
+        OfficeResumeCore: all

@@ -13,6 +13,7 @@ Office Resume v1 planning docs are in:
 Once the Xcode project is scaffolded, run:
 
 ```bash
+xcodegen generate
 xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeMAS -destination 'platform=macOS' build test
 xcodebuild -workspace OfficeResume.xcworkspace -scheme OfficeResumeDirect -destination 'platform=macOS' build test
 ```
