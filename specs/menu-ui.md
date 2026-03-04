@@ -9,16 +9,18 @@ Menu bar user interface and command surface for helper control.
 - `Sources/MenuUIShared/**`
 
 ## Responsibilities
-1. Render a compact, dockless menu-bar popover UI.
+1. Render a standard dockless macOS menu (`MenuBarExtra` menu style).
 2. Render helper availability and paused-state feedback.
-3. Render Accessibility status + settings action when needed.
+3. Render Accessibility status exactly as:
+   - `Accessibility: OK` when trusted
+   - `Accessibility: click to fix` (opens system Accessibility settings) when not trusted
 4. Expose controls:
    - `Restore Now`
    - `Pause Tracking` / `Resume Tracking`
    - `Advanced > Clear Snapshot`
    - `Advanced > Open Debug Log in Console`
    - `Quit`
-5. Render unsupported app notice for OneNote.
+5. Use XPC for helper commands/status when available; fall back to shared IPC status + distributed command notifications.
 6. Initialize distribution channel marker for helper/core selection.
 
 ## Channel Rules
@@ -28,11 +30,14 @@ Menu bar user interface and command surface for helper control.
 
 ## Forbidden Changes
 - Do not move monitoring/restore logic into UI process.
-- Do not hide OneNote unsupported status.
 - Do not add per-app restore policy UI in v1.
 - Do not reintroduce persistent Dock presence for menu app targets.
+- Do not use `.menuBarExtraStyle(.window)` or custom `NSPopover`/`NSPanel`/`NSWindow` menu shells.
+- Do not show a dedicated OneNote unsupported row/message in the menu UI.
 
 ## Component Acceptance Checks
-- Controls invoke corresponding XPC commands.
-- Accessibility warning and remediation link appear when not trusted.
+- Controls invoke helper commands via XPC or fallback distributed notifications.
+- Accessibility line shows `Accessibility: OK` when trusted.
+- Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
+- Accessibility line updates when permission is granted/revoked while app/helper are already running.
 - `Quit` terminates helper and menu app together.

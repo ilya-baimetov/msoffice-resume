@@ -18,6 +18,7 @@
 		2E13B31F642784F060ED2C9C /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
 		43A1485C2ED49E84263ED1C1 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49EDE795080CB527122DF54D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF22C81325E81BB13E62C604 /* Protocols.swift */; };
+		4D7020E83FEB07EE15A08FD8 /* DaemonSharedIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793AD1CBD706521D5B6F02BA /* DaemonSharedIPC.swift */; };
 		52B981367A999058DAEB8BA6 /* OfficeResumeMenuUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */; };
 		540350FE07DFAE6D6B66AC16 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5F99934357C4CB3FAFD96BA9 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -122,6 +123,7 @@
 		5F190C84B09268D85A25644F /* OfficeResumeCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeResumeCoreTests.swift; sourceTree = "<group>"; };
 		6FDBBC61C68E80014EBCC415 /* OfficeResumeMAS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OfficeResumeMAS.entitlements; sourceTree = "<group>"; };
 		775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreEngine.swift; sourceTree = "<group>"; };
+		793AD1CBD706521D5B6F02BA /* DaemonSharedIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonSharedIPC.swift; sourceTree = "<group>"; };
 		83B36A0EFF651A775105CCB8 /* OfficeResumeDirect.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OfficeResumeDirect.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8ADA5461F33F8B8E3F491684 /* OfficeResumeHelper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OfficeResumeHelper.entitlements; sourceTree = "<group>"; };
 		8D177C999B66B00DD1089319 /* OfficeResumeMASApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeResumeMASApp.swift; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 		54CFFD016C823973E6A97CF0 /* OfficeResumeCore */ = {
 			isa = PBXGroup;
 			children = (
+				793AD1CBD706521D5B6F02BA /* DaemonSharedIPC.swift */,
 				FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */,
 				FCA05774F987DC39DCAD5414 /* DebugLog.swift */,
 				E04D7C467F3B367D4B38109B /* DomainModels.swift */,
@@ -424,6 +427,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D7020E83FEB07EE15A08FD8 /* DaemonSharedIPC.swift in Sources */,
 				195CE5EC0A9257EF89831F8A /* DaemonXPCBridge.swift in Sources */,
 				A7010CC18F935820E84C6F2F /* DebugLog.swift in Sources */,
 				DD43772042E81D0B72EE40E3 /* DomainModels.swift in Sources */,

@@ -31,6 +31,19 @@ jobs:
           set -euo pipefail
           bash scripts/eval-docs-consistency.sh
 
+  ui-guardrails:
+    name: ui-guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run UI guardrails
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/eval-ui-guardrails.sh
+
   pr-scorecard-guardrail:
     name: pr-scorecard-guardrail
     runs-on: ubuntu-latest

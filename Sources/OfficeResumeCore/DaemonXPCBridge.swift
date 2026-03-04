@@ -1,12 +1,13 @@
 import Foundation
 
 public enum DaemonXPCConstants {
-    public static let machServiceName = "com.pragprod.msofficeresume.daemon"
+    public static let endpointFileName = "daemon-xpc-endpoint-v1.data"
 }
 
 public enum DaemonXPCError: Error, LocalizedError {
     case connectionFailed
     case decodingFailed
+    case requestTimedOut
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ public enum DaemonXPCError: Error, LocalizedError {
             return "Unable to connect to helper XPC service."
         case .decodingFailed:
             return "Unable to decode response payload."
+        case .requestTimedOut:
+            return "Helper request timed out."
         }
     }
 }
@@ -230,7 +233,7 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
     private let service: OfficeResumeDaemonService
 
     public init(service: OfficeResumeDaemonService = OfficeResumeDaemonService()) {
-        self.listener = NSXPCListener(machServiceName: DaemonXPCConstants.machServiceName)
+        self.listener = NSXPCListener.anonymous()
         self.service = service
         super.init()
         self.listener.delegate = self
@@ -238,6 +241,15 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
 
     public func resume() {
         listener.resume()
+    }
+
+    public func persistEndpoint() throws {
+        let data = try NSKeyedArchiver.archivedData(withRootObject: listener.endpoint, requiringSecureCoding: false)
+        try DaemonEndpointStore.writeEndpointData(data)
+    }
+
+    public func clearEndpoint() {
+        try? DaemonEndpointStore.clear()
     }
 
     public func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
@@ -257,82 +269,82 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
 public final class DaemonXPCClient {
     private var connection: NSXPCConnection?
     private let decoder = JSONDecoder()
+    private let requestTimeoutSeconds: TimeInterval = 1.5
 
     public init() {}
 
     public func fetchStatus(_ completion: @escaping (Result<DaemonStatusDTO, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.getStatus { data in
                 guard let data else {
-                    completion(.failure(DaemonXPCError.decodingFailed))
+                    resolve(.failure(DaemonXPCError.decodingFailed))
                     return
                 }
+
                 do {
                     let status = try self.decoder.decode(DaemonStatusDTO.self, from: data as Data)
-                    completion(.success(status))
+                    resolve(.success(status))
                 } catch {
-                    completion(.failure(error))
+                    resolve(.failure(error))
                 }
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func setPaused(_ paused: Bool, completion: @escaping (Result<Bool, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.setPaused(paused) { ok in
-                completion(.success(ok))
+                resolve(.success(ok))
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func restoreNow(app: OfficeApp?, completion: @escaping (Result<RestoreCommandResultDTO, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.restoreNow(app?.rawValue) { data in
                 guard let data else {
-                    completion(.failure(DaemonXPCError.decodingFailed))
+                    resolve(.failure(DaemonXPCError.decodingFailed))
                     return
                 }
                 do {
                     let decoded = try self.decoder.decode(RestoreCommandResultDTO.self, from: data as Data)
-                    completion(.success(decoded))
+                    resolve(.success(decoded))
                 } catch {
-                    completion(.failure(error))
+                    resolve(.failure(error))
                 }
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func clearSnapshot(app: OfficeApp?, completion: @escaping (Result<Bool, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.clearSnapshot(app?.rawValue) { ok in
-                completion(.success(ok))
+                resolve(.success(ok))
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
-    private func withRemote(
-        _ body: @escaping (OfficeResumeDaemonXPCProtocol) -> Void,
-        onFailure: @escaping (Error) -> Void
+    private func sendRequest<T>(
+        completion: @escaping (Result<T, Error>) -> Void,
+        request: @escaping (_ proxy: OfficeResumeDaemonXPCProtocol, _ resolve: @escaping (Result<T, Error>) -> Void) -> Void
     ) {
+        let resolve = singleShot(completion)
+
         do {
-            let proxy = try remoteProxy()
-            body(proxy)
+            let proxy = try remoteProxy { [weak self] error in
+                self?.invalidateConnection()
+                resolve(.failure(error))
+            }
+            request(proxy, resolve)
+            scheduleTimeout(resolve)
         } catch {
-            onFailure(error)
+            resolve(.failure(error))
         }
     }
 
-    private func remoteProxy() throws -> OfficeResumeDaemonXPCProtocol {
+    private func remoteProxy(onError: @escaping (Error) -> Void) throws -> OfficeResumeDaemonXPCProtocol {
         let connection = try ensureConnection()
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in }) as? OfficeResumeDaemonXPCProtocol else {
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler(onError) as? OfficeResumeDaemonXPCProtocol else {
             throw DaemonXPCError.connectionFailed
         }
         return proxy
@@ -343,7 +355,11 @@ public final class DaemonXPCClient {
             return connection
         }
 
-        let newConnection = NSXPCConnection(machServiceName: DaemonXPCConstants.machServiceName, options: [])
+        guard let endpoint = try DaemonEndpointStore.readEndpoint() else {
+            throw DaemonXPCError.connectionFailed
+        }
+
+        let newConnection = NSXPCConnection(listenerEndpoint: endpoint)
         newConnection.remoteObjectInterface = NSXPCInterface(with: OfficeResumeDaemonXPCProtocol.self)
         newConnection.invalidationHandler = { [weak self] in
             self?.connection = nil
@@ -355,5 +371,78 @@ public final class DaemonXPCClient {
 
         connection = newConnection
         return newConnection
+    }
+
+    private func invalidateConnection() {
+        connection?.invalidate()
+        connection = nil
+    }
+
+    private func singleShot<T>(
+        _ completion: @escaping (Result<T, Error>) -> Void
+    ) -> (Result<T, Error>) -> Void {
+        let lock = NSLock()
+        var resolved = false
+
+        return { result in
+            lock.lock()
+            defer { lock.unlock() }
+            guard !resolved else {
+                return
+            }
+            resolved = true
+            completion(result)
+        }
+    }
+
+    private func scheduleTimeout<T>(
+        _ completion: @escaping (Result<T, Error>) -> Void
+    ) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + requestTimeoutSeconds) {
+            completion(.failure(DaemonXPCError.requestTimedOut))
+        }
+    }
+}
+
+private enum DaemonEndpointStore {
+    static func writeEndpointData(_ data: Data, fileManager: FileManager = .default) throws {
+        let url = try endpointFileURL(fileManager: fileManager)
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
+
+    static func readEndpoint(fileManager: FileManager = .default) throws -> NSXPCListenerEndpoint? {
+        let url = try endpointFileURL(fileManager: fileManager)
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+
+        let data = try Data(contentsOf: url)
+        return try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? NSXPCListenerEndpoint
+    }
+
+    static func clear(fileManager: FileManager = .default) throws {
+        let url = try endpointFileURL(fileManager: fileManager)
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        try fileManager.removeItem(at: url)
+    }
+
+    private static func endpointFileURL(fileManager: FileManager) throws -> URL {
+        if let appGroupRoot = fileManager.containerURL(forSecurityApplicationGroupIdentifier: RuntimeConfiguration.appGroupIdentifier) {
+            return appGroupRoot
+                .appendingPathComponent("ipc", isDirectory: true)
+                .appendingPathComponent(DaemonXPCConstants.endpointFileName)
+        }
+
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        return appSupport
+            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+            .appendingPathComponent("ipc", isDirectory: true)
+            .appendingPathComponent(DaemonXPCConstants.endpointFileName)
     }
 }

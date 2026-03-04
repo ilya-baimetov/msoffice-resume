@@ -261,6 +261,7 @@ final class HelperDaemonController {
 
         _ = stateStore.setPaused(isPaused)
         stateStore.setHelperRunning(true)
+        publishStatus()
 
         DebugLog.info(
             "Helper daemon initialized",
@@ -288,6 +289,7 @@ final class HelperDaemonController {
         }
         pendingAXCaptureTasks.removeAll()
         stateStore.setHelperRunning(false)
+        publishStatus()
     }
 
     func makeXPCHandlers() -> DaemonServiceHandlers {
@@ -344,10 +346,25 @@ final class HelperDaemonController {
 
     func setAccessibilityTrusted(_ trusted: Bool) {
         stateStore.setAccessibilityTrusted(trusted)
+        publishStatus()
         DebugLog.info(
             "Accessibility permission state updated",
             metadata: ["trusted": trusted ? "true" : "false"]
         )
+    }
+
+    func handleCommandSetPaused(_ paused: Bool) async {
+        _ = await setPaused(paused)
+    }
+
+    func handleCommandRestoreNow(appRaw: String?) async {
+        let app = appRaw.flatMap { OfficeApp(rawValue: $0) }
+        _ = await restoreNow(app: app)
+    }
+
+    func handleCommandClearSnapshot(appRaw: String?) async {
+        let app = appRaw.flatMap { OfficeApp(rawValue: $0) }
+        _ = await clearSnapshot(app: app)
     }
 
     func handleAccessibilityEvent(app: OfficeApp, event: String, pid: pid_t) {
@@ -396,6 +413,7 @@ final class HelperDaemonController {
             cancelPendingAccessibilityCaptures()
         }
         let ok = stateStore.setPaused(paused)
+        publishStatus()
         DebugLog.info("Pause state updated", metadata: ["paused": paused ? "true" : "false", "ok": ok ? "true" : "false"])
         return ok
     }
@@ -617,6 +635,7 @@ final class HelperDaemonController {
             if shouldPersist(newSnapshot: snapshot, currentSnapshot: current, app: app, source: source) {
                 try await snapshotStore.saveSnapshot(snapshot)
                 stateStore.updateLatestSnapshot(app: app, capturedAt: snapshot.capturedAt)
+                publishStatus()
                 DebugLog.debug(
                     "Snapshot persisted",
                     metadata: [
@@ -690,6 +709,7 @@ final class HelperDaemonController {
         do {
             let state = try await entitlementProvider.refresh()
             stateStore.setEntitlementState(state)
+            publishStatus()
             if !state.isActive {
                 cancelPendingAccessibilityCaptures()
             }
@@ -703,6 +723,7 @@ final class HelperDaemonController {
         } catch {
             let state = await entitlementProvider.currentState()
             stateStore.setEntitlementState(state)
+            publishStatus()
             if !state.isActive {
                 cancelPendingAccessibilityCaptures()
             }
@@ -720,6 +741,7 @@ final class HelperDaemonController {
     private func syncSnapshotTimestamps() async {
         let timestamps = (try? await snapshotStore.latestSnapshotCapturedAt()) ?? [:]
         stateStore.setLatestSnapshots(timestamps)
+        publishStatus()
     }
 
     private func lifecycleDetails(type: LifecycleEventType, runningApplication: NSRunningApplication?) -> [String: String] {
@@ -869,6 +891,10 @@ final class HelperDaemonController {
         }
         pendingAXCaptureTasks.removeAll()
     }
+
+    private func publishStatus() {
+        DaemonSharedIPC.publishStatus(stateStore.currentStatus())
+    }
 }
 
 final class HelperAppDelegate: NSObject, NSApplicationDelegate {
@@ -876,6 +902,9 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: OfficeLifecycleMonitor?
     private var accessibilityMonitor: OfficeAccessibilityMonitor?
     private var controller: HelperDaemonController?
+    private var commandObservers: [NSObjectProtocol] = []
+    private var accessibilityTrustTimer: Timer?
+    private var lastAccessibilityTrusted: Bool?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -885,6 +914,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             let controller = try HelperDaemonController()
             self.controller = controller
             controller.start()
+            startCommandObservers(controller: controller)
 
             let service = OfficeResumeDaemonService(handlers: controller.makeXPCHandlers())
             let host = DaemonListenerHost(service: service)
@@ -898,15 +928,20 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             }
             let trusted = accessibilityMonitor.start(prompt: true)
             controller.setAccessibilityTrusted(trusted)
+            lastAccessibilityTrusted = trusted
             self.accessibilityMonitor = accessibilityMonitor
 
             attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+            startAccessibilityTrustRefresh(accessibilityMonitor: accessibilityMonitor, controller: controller)
 
             let monitor = OfficeLifecycleMonitor { [weak controller, weak accessibilityMonitor] app, type, runningApplication in
                 Task { @MainActor in
                     if let accessibilityMonitor {
                         let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
                         controller?.setAccessibilityTrusted(trustedNow)
+                        if !trustedNow {
+                            accessibilityMonitor.stop()
+                        }
                     }
                     controller?.handleLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
                     if type == .appLaunched {
@@ -928,6 +963,8 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
         accessibilityMonitor?.stop()
+        stopAccessibilityTrustRefresh()
+        stopCommandObservers()
         ProcessInfo.processInfo.enableSuddenTermination()
         ProcessInfo.processInfo.enableAutomaticTermination("Office Resume Helper monitoring")
         Task { @MainActor in
@@ -945,5 +982,94 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
                 accessibilityMonitor.attach(app: app, runningApplication: running)
             }
         }
+    }
+
+    private func startCommandObservers(controller: HelperDaemonController) {
+        let center = DistributedNotificationCenter.default()
+
+        let pauseObserver = center.addObserver(
+            forName: DaemonSharedIPC.pauseCommandName,
+            object: nil,
+            queue: nil
+        ) { notification in
+            let paused = (notification.userInfo?[DaemonSharedIPC.pausedUserInfoKey] as? Bool) ?? false
+            Task { @MainActor in
+                await controller.handleCommandSetPaused(paused)
+            }
+        }
+
+        let restoreObserver = center.addObserver(
+            forName: DaemonSharedIPC.restoreCommandName,
+            object: nil,
+            queue: nil
+        ) { notification in
+            let appRaw = notification.userInfo?[DaemonSharedIPC.appUserInfoKey] as? String
+            Task { @MainActor in
+                await controller.handleCommandRestoreNow(appRaw: appRaw)
+            }
+        }
+
+        let clearObserver = center.addObserver(
+            forName: DaemonSharedIPC.clearSnapshotCommandName,
+            object: nil,
+            queue: nil
+        ) { notification in
+            let appRaw = notification.userInfo?[DaemonSharedIPC.appUserInfoKey] as? String
+            Task { @MainActor in
+                await controller.handleCommandClearSnapshot(appRaw: appRaw)
+            }
+        }
+
+        commandObservers = [pauseObserver, restoreObserver, clearObserver]
+    }
+
+    private func stopCommandObservers() {
+        guard !commandObservers.isEmpty else {
+            return
+        }
+
+        let center = DistributedNotificationCenter.default()
+        for observer in commandObservers {
+            center.removeObserver(observer)
+        }
+        commandObservers.removeAll()
+    }
+
+    private func startAccessibilityTrustRefresh(
+        accessibilityMonitor: OfficeAccessibilityMonitor,
+        controller: HelperDaemonController
+    ) {
+        stopAccessibilityTrustRefresh()
+
+        accessibilityTrustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self, weak accessibilityMonitor] _ in
+            guard
+                let self,
+                let accessibilityMonitor
+            else {
+                return
+            }
+
+            let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
+            guard trustedNow != self.lastAccessibilityTrusted else {
+                return
+            }
+
+            self.lastAccessibilityTrusted = trustedNow
+
+            Task { @MainActor in
+                controller.setAccessibilityTrusted(trustedNow)
+            }
+
+            if trustedNow {
+                self.attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+            } else {
+                accessibilityMonitor.stop()
+            }
+        }
+    }
+
+    private func stopAccessibilityTrustRefresh() {
+        accessibilityTrustTimer?.invalidate()
+        accessibilityTrustTimer = nil
     }
 }

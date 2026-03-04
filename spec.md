@@ -11,7 +11,7 @@
 v1 support:
 - Word/Excel/PowerPoint: document-level restore
 - Outlook: lifecycle + window metadata capture; restore = relaunch only
-- OneNote: unsupported (UI-visible state)
+- OneNote: unsupported (no dedicated menu UI line in v1)
 
 ## 2. Repository and Target Layout (Planned)
 ```
@@ -130,15 +130,16 @@ XPC-facing API (helper service):
 ### 5.2 MenuBarApp
 - Run as a dockless LSUIElement menu bar app.
 - Keep a shared menu UI implementation used by both Direct and MAS targets.
-- Present a compact window-style menu (`MenuBarExtra`) with:
+- Present a standard macOS menu-style `MenuBarExtra` (not custom window-style) with:
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
   - `Advanced` submenu:
     - `Clear Snapshot`
     - `Open Debug Log in Console`
   - `Quit`
-- Show Accessibility requirement status and deep-link to system settings when missing.
-- Show unsupported app notice for OneNote.
+- Show Accessibility status as:
+  - `Accessibility: OK` when trusted
+  - `Accessibility: click to fix` (click opens system settings) when not trusted
 - Start helper via `SMAppService` (login item).
 - `Quit` must terminate both menu app and helper process.
 
@@ -165,6 +166,7 @@ XPC-facing API (helper service):
 
 ### 6.2 Accessibility Capture (Primary)
 - Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt on first run).
+- Refresh trust status periodically while helper is running (target cadence: every ~2 seconds) so menu status reflects permission toggles without requiring app restart.
 - On app launch, attach `AXObserver` to Office PID and subscribe to:
   - `kAXWindowCreatedNotification`
   - `kAXUIElementDestroyedNotification`
@@ -332,6 +334,19 @@ No cross-channel purchase linking in v1.
 
 ## 13. XPC Contract Details
 
+### 13.0 Transport
+- Preferred control/status path: XPC (when available).
+- Required fallback path (must work in local/direct runs):
+  - helper publishes daemon status JSON to shared IPC file:
+    - app-group container path when available
+    - fallback: `~/Library/Application Support/com.pragprod.msofficeresume/ipc/daemon-status-v1.json`
+  - menu reads shared status file when XPC status fetch fails.
+  - menu posts helper commands via distributed notifications:
+    - `com.pragprod.msofficeresume.command.pause`
+    - `com.pragprod.msofficeresume.command.restore-now`
+    - `com.pragprod.msofficeresume.command.clear-snapshot`
+  - helper listens to those distributed notifications and executes the same command handlers.
+
 ### 13.1 Status DTO
 - paused flag
 - helper running flag
@@ -375,7 +390,7 @@ No cross-channel purchase linking in v1.
 7. Untitled force-save creates artifact + index mapping.
 8. Unsaved artifact restore works and purges when stale.
 9. Outlook relaunch-only flow executes without message-level restore attempts.
-10. OneNote shown unsupported in status/UI.
+10. OneNote remains unsupported and no OneNote restore is attempted.
 11. Trial active allows monitor/restore.
 12. Trial/subscription inactive disables monitor/restore, preserves read-only history.
 13. MAS StoreKit entitlement refresh logic correct.

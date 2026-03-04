@@ -41,7 +41,7 @@ When documents conflict, apply this order:
 - Microsoft Excel: full workbook-level capture/restore
 - Microsoft PowerPoint: full presentation-level capture/restore
 - Microsoft Outlook: limited mode (capture lifecycle/window metadata; restore = relaunch only)
-- Microsoft OneNote: explicitly unsupported in v1 (must be shown as unsupported in UI/help)
+- Microsoft OneNote: explicitly unsupported in v1 (documented in help/docs; no dedicated menu row)
 
 ## Distribution Channels and Billing Rules
 Two targets/schemes in one codebase:
@@ -90,6 +90,7 @@ For Word/Excel/PowerPoint untitled docs:
 - Keep monitoring/restore logic in helper/shared core, not in UI layer
 - Keep adapters per Office app isolated behind protocols
 - Use `AXObserver`/Accessibility notifications as the primary signal source for document/window transitions
+- Menu UI must use native `MenuBarExtra` menu style; do not use `.menuBarExtraStyle(.window)` or custom popover/window menu UIs
 - Keep MAS and Direct billing providers separated behind a common entitlement interface
 - No remote telemetry in v1
 - Keep OneNote unsupported unless explicitly re-scoped in PRD/spec updates

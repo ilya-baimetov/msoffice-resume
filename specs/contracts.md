@@ -17,6 +17,9 @@ This file defines cross-component interfaces and invariants.
 - `EntitlementState`: isActive, plan, validUntil, trialEndsAt, lastValidatedAt
 
 ## XPC Contract (Menu <-> Helper)
+- Transport:
+  - preferred: XPC request/reply for status + commands
+  - required fallback: shared IPC status file + distributed command notifications
 - `getStatus()`
 - `setPaused(Bool)`
 - `restoreNow(app?)`
@@ -59,4 +62,4 @@ MAS root:
 ## Support Matrix
 - Word/Excel/PowerPoint: document-level capture/restore
 - Outlook: relaunch-only restore mode
-- OneNote: unsupported in v1, surfaced in UI
+- OneNote: unsupported in v1, and not shown as a dedicated menu row
