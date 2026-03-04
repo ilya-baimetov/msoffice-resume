@@ -12,6 +12,43 @@ pass() { echo "PASS: $*"; }
 warn() { echo "WARN: $*"; warnings=$((warnings + 1)); }
 fail() { echo "FAIL: $*"; failures=$((failures + 1)); }
 
+has_rg=false
+if command -v rg >/dev/null 2>&1; then
+  has_rg=true
+fi
+
+search_in_file() {
+  local pattern="$1"
+  local file="$2"
+  if ${has_rg}; then
+    rg -q --pcre2 "$pattern" "$file"
+  else
+    grep -Eq "$pattern" "$file"
+  fi
+}
+
+search_in_repo_with_glob() {
+  local pattern="$1"
+  local file_glob="$2"
+  if ${has_rg}; then
+    rg -q --pcre2 "$pattern" --glob "$file_glob" .
+  else
+    local matched=false
+    while IFS= read -r -d '' file; do
+      matched=true
+      if grep -Eq "$pattern" "$file"; then
+        return 0
+      fi
+    done < <(find . -type f -name "$file_glob" -print0)
+
+    if ${matched}; then
+      return 1
+    fi
+
+    return 1
+  fi
+}
+
 require_file() {
   local path="$1"
   local label="$2"
@@ -26,7 +63,7 @@ require_pattern() {
   local file="$1"
   local pattern="$2"
   local label="$3"
-  if rg -q --pcre2 "$pattern" "$file"; then
+  if search_in_file "$pattern" "$file"; then
     pass "$label"
   else
     fail "$label"
@@ -37,7 +74,7 @@ forbid_pattern() {
   local file_glob="$1"
   local pattern="$2"
   local label="$3"
-  if rg -q --pcre2 "$pattern" --glob "$file_glob" .; then
+  if search_in_repo_with_glob "$pattern" "$file_glob"; then
     fail "$label"
   else
     pass "$label"
@@ -104,7 +141,7 @@ echo "== Bundle Prefix Drift Checks =="
 require_pattern "AGENTS.md" "com\\.pragprod\\.msofficeresume" "AGENTS uses current bundle prefix"
 forbid_pattern "*.md" "com\\.alemira\\.msofficeresume|com\\.ilya\\.msofficeresume" "No stale bundle prefixes in markdown docs"
 
-if ! rg -q "com\\.pragprod\\.msofficeresume" --glob "*.md" .; then
+if ! search_in_repo_with_glob "com\\.pragprod\\.msofficeresume" "*.md"; then
   warn "No bundle prefix mentions found in markdown docs"
 else
   pass "Current bundle prefix appears in markdown docs"

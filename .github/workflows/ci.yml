@@ -160,6 +160,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Regenerate Xcode project for runner compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f project.yml ]]; then
+            if ! command -v xcodegen >/dev/null 2>&1; then
+              brew install xcodegen
+            fi
+            xcodegen generate
+          fi
+
       - name: Discover workspace or project
         id: discover
         shell: bash
@@ -220,6 +231,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Regenerate Xcode project for runner compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f project.yml ]]; then
+            if ! command -v xcodegen >/dev/null 2>&1; then
+              brew install xcodegen
+            fi
+            xcodegen generate
+          fi
 
       - name: Discover workspace or project
         id: discover
