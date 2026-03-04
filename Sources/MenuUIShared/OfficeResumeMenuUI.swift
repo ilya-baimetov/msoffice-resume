@@ -35,10 +35,18 @@ private struct OfficeResumeMenuContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !model.status.accessibilityTrusted {
-                Text("Accessibility permission is required.")
-                    .foregroundStyle(.secondary)
-                Button("Open Accessibility Settings") {
+            if model.connectionOK {
+                if model.status.accessibilityTrusted {
+                    Text("Accessibility: OK")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("Accessibility: click to fix") {
+                        model.openAccessibilitySettings()
+                    }
+                }
+                Divider()
+            } else {
+                Button("Accessibility: click to fix") {
                     model.openAccessibilitySettings()
                 }
                 Divider()
@@ -97,6 +105,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     private var statusRefreshTimer: Timer?
     private var startupRetryCount = 0
     private let maxStartupRetryCount = 8
+    private var consecutiveStatusFailures = 0
 
     init(channel: DistributionChannel) {
         self.channel = channel
@@ -129,8 +138,12 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     self.status = status
                     self.connectionOK = true
                     self.startupRetryCount = 0
+                    self.consecutiveStatusFailures = 0
                 case .failure:
-                    self.connectionOK = false
+                    self.consecutiveStatusFailures += 1
+                    if !self.connectionOK || self.consecutiveStatusFailures >= 3 {
+                        self.connectionOK = false
+                    }
                     self.retryStartupIfNeeded()
                 }
             }

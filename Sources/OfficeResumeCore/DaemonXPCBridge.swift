@@ -7,6 +7,7 @@ public enum DaemonXPCConstants {
 public enum DaemonXPCError: Error, LocalizedError {
     case connectionFailed
     case decodingFailed
+    case requestTimedOut
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ public enum DaemonXPCError: Error, LocalizedError {
             return "Unable to connect to helper XPC service."
         case .decodingFailed:
             return "Unable to decode response payload."
+        case .requestTimedOut:
+            return "Helper request timed out."
         }
     }
 }
@@ -257,82 +260,82 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
 public final class DaemonXPCClient {
     private var connection: NSXPCConnection?
     private let decoder = JSONDecoder()
+    private let requestTimeoutSeconds: TimeInterval = 1.5
 
     public init() {}
 
     public func fetchStatus(_ completion: @escaping (Result<DaemonStatusDTO, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.getStatus { data in
                 guard let data else {
-                    completion(.failure(DaemonXPCError.decodingFailed))
+                    resolve(.failure(DaemonXPCError.decodingFailed))
                     return
                 }
+
                 do {
                     let status = try self.decoder.decode(DaemonStatusDTO.self, from: data as Data)
-                    completion(.success(status))
+                    resolve(.success(status))
                 } catch {
-                    completion(.failure(error))
+                    resolve(.failure(error))
                 }
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func setPaused(_ paused: Bool, completion: @escaping (Result<Bool, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.setPaused(paused) { ok in
-                completion(.success(ok))
+                resolve(.success(ok))
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func restoreNow(app: OfficeApp?, completion: @escaping (Result<RestoreCommandResultDTO, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.restoreNow(app?.rawValue) { data in
                 guard let data else {
-                    completion(.failure(DaemonXPCError.decodingFailed))
+                    resolve(.failure(DaemonXPCError.decodingFailed))
                     return
                 }
                 do {
                     let decoded = try self.decoder.decode(RestoreCommandResultDTO.self, from: data as Data)
-                    completion(.success(decoded))
+                    resolve(.success(decoded))
                 } catch {
-                    completion(.failure(error))
+                    resolve(.failure(error))
                 }
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
     public func clearSnapshot(app: OfficeApp?, completion: @escaping (Result<Bool, Error>) -> Void) {
-        withRemote { proxy in
+        sendRequest(completion: completion) { proxy, resolve in
             proxy.clearSnapshot(app?.rawValue) { ok in
-                completion(.success(ok))
+                resolve(.success(ok))
             }
-        } onFailure: { error in
-            completion(.failure(error))
         }
     }
 
-    private func withRemote(
-        _ body: @escaping (OfficeResumeDaemonXPCProtocol) -> Void,
-        onFailure: @escaping (Error) -> Void
+    private func sendRequest<T>(
+        completion: @escaping (Result<T, Error>) -> Void,
+        request: @escaping (_ proxy: OfficeResumeDaemonXPCProtocol, _ resolve: @escaping (Result<T, Error>) -> Void) -> Void
     ) {
+        let resolve = singleShot(completion)
+
         do {
-            let proxy = try remoteProxy()
-            body(proxy)
+            let proxy = try remoteProxy { [weak self] error in
+                self?.invalidateConnection()
+                resolve(.failure(error))
+            }
+            request(proxy, resolve)
+            scheduleTimeout(resolve)
         } catch {
-            onFailure(error)
+            resolve(.failure(error))
         }
     }
 
-    private func remoteProxy() throws -> OfficeResumeDaemonXPCProtocol {
+    private func remoteProxy(onError: @escaping (Error) -> Void) throws -> OfficeResumeDaemonXPCProtocol {
         let connection = try ensureConnection()
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in }) as? OfficeResumeDaemonXPCProtocol else {
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler(onError) as? OfficeResumeDaemonXPCProtocol else {
             throw DaemonXPCError.connectionFailed
         }
         return proxy
@@ -355,5 +358,35 @@ public final class DaemonXPCClient {
 
         connection = newConnection
         return newConnection
+    }
+
+    private func invalidateConnection() {
+        connection?.invalidate()
+        connection = nil
+    }
+
+    private func singleShot<T>(
+        _ completion: @escaping (Result<T, Error>) -> Void
+    ) -> (Result<T, Error>) -> Void {
+        let lock = NSLock()
+        var resolved = false
+
+        return { result in
+            lock.lock()
+            defer { lock.unlock() }
+            guard !resolved else {
+                return
+            }
+            resolved = true
+            completion(result)
+        }
+    }
+
+    private func scheduleTimeout<T>(
+        _ completion: @escaping (Result<T, Error>) -> Void
+    ) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + requestTimeoutSeconds) {
+            completion(.failure(DaemonXPCError.requestTimedOut))
+        }
     }
 }

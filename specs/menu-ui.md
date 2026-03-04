@@ -11,7 +11,9 @@ Menu bar user interface and command surface for helper control.
 ## Responsibilities
 1. Render a standard dockless macOS menu (`MenuBarExtra` menu style).
 2. Render helper availability and paused-state feedback.
-3. Render Accessibility status + settings action when needed.
+3. Render Accessibility status exactly as:
+   - `Accessibility: OK` when trusted
+   - `Accessibility: click to fix` (opens system Accessibility settings) when not trusted
 4. Expose controls:
    - `Restore Now`
    - `Pause Tracking` / `Resume Tracking`
@@ -34,5 +36,6 @@ Menu bar user interface and command surface for helper control.
 
 ## Component Acceptance Checks
 - Controls invoke corresponding XPC commands.
-- Accessibility warning and remediation link appear when not trusted.
+- Accessibility line shows `Accessibility: OK` when trusted.
+- Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
 - `Quit` terminates helper and menu app together.

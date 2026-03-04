@@ -137,7 +137,9 @@ XPC-facing API (helper service):
     - `Clear Snapshot`
     - `Open Debug Log in Console`
   - `Quit`
-- Show Accessibility requirement status and deep-link to system settings when missing.
+- Show Accessibility status as:
+  - `Accessibility: OK` when trusted
+  - `Accessibility: click to fix` (click opens system settings) when not trusted
 - Start helper via `SMAppService` (login item).
 - `Quit` must terminate both menu app and helper process.
 
