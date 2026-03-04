@@ -19,9 +19,10 @@ When documents conflict, apply this order:
 - Platform: macOS 14+, Apple Silicon only
 - UX: menu bar first, mostly automatic, quiet operation with local recent log visibility
 - Startup: auto-start at login via helper (`SMAppService`)
+- Capture model: Accessibility-first event interception is required in v1
 - Global restore policy: auto-restore on relaunch, one-shot per app launch instance
 - Duplicate guard: open only missing documents during restore
-- Polling options: `1s`, `5s`, `15s` (default), `1m`, `None`
+- Polling fallback is removed in v1; capture is Accessibility event-driven only
 - Retention: latest snapshot only (+ minimal local events/logs)
 - Privacy: local logs only, no remote analytics
 - Trial/pricing: 14-day trial, then `$5/month` or `$50/year`
@@ -80,6 +81,7 @@ For Word/Excel/PowerPoint untitled docs:
 - Prefer Swift, SwiftUI/AppKit, and native Apple frameworks
 - Keep monitoring/restore logic in helper/shared core, not in UI layer
 - Keep adapters per Office app isolated behind protocols
+- Use `AXObserver`/Accessibility notifications as the primary signal source for document/window transitions
 - Keep MAS and Direct billing providers separated behind a common entitlement interface
 - No remote telemetry in v1
 - Keep OneNote unsupported unless explicitly re-scoped in PRD/spec updates
@@ -89,6 +91,7 @@ For Word/Excel/PowerPoint untitled docs:
 - Menu bar app
 - Login item helper daemon model
 - XPC contract for settings/status/actions/events
+- Accessibility permission onboarding/status and AX observer lifecycle management
 - Office adapters (Word/Excel/PowerPoint/Outlook + unsupported OneNote stub)
 - Snapshot persistence and restore engine
 - Entitlement providers (StoreKit 2 and Stripe)
@@ -98,11 +101,12 @@ For Word/Excel/PowerPoint untitled docs:
 No feature is complete unless these pass:
 
 1. Unit tests for snapshot diffing, restore dedupe, one-shot markers, and entitlement grace logic.
-2. Integration tests for adapter parsing/execution boundaries (mocked AppleScript and real-script smoke tests where feasible).
+2. Integration tests for adapter parsing/execution boundaries (mocked adapter execution plus AX-triggered capture flow checks).
 3. Manual scenario checklist from `spec.md` test matrix.
 4. Verification that trial expiration disables monitoring and restore while preserving read-only history.
 5. Verification that OneNote is surfaced as unsupported.
 6. Verification that no remote analytics endpoints are invoked.
+7. Verification that behavior is correct with Accessibility both granted and denied.
 
 ## Contributor Workflow
 1. Read `AGENTS.md`, `PRD.md`, and `spec.md` before coding.

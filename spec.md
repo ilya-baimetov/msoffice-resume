@@ -36,10 +36,6 @@ enum OfficeApp: String, Codable, CaseIterable {
     case word, excel, powerpoint, outlook, onenote
 }
 
-enum PollingInterval: String, Codable {
-    case oneSecond, fiveSeconds, fifteenSeconds, oneMinute, none
-}
-
 struct DocumentSnapshot: Codable, Hashable {
     let app: OfficeApp
     let displayName: String
@@ -66,7 +62,7 @@ struct AppSnapshot: Codable {
 }
 
 enum LifecycleEventType: String, Codable {
-    case appLaunched, appTerminated, statePolled, restoreStarted, restoreSucceeded, restoreFailed
+    case appLaunched, appTerminated, stateCaptured, restoreStarted, restoreSucceeded, restoreFailed
 }
 
 struct LifecycleEvent: Codable {
@@ -100,7 +96,6 @@ XPC-facing API (helper service):
 ```swift
 @objc protocol DaemonXPC {
     func getStatus(_ reply: @escaping (DaemonStatusDTO) -> Void)
-    func setPollingInterval(_ value: String, reply: @escaping (Bool) -> Void)
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (RestoreCommandResultDTO) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
@@ -112,7 +107,8 @@ XPC-facing API (helper service):
 
 ### 5.1 OfficeResumeHelper
 - Register for `NSWorkspace` app launch/terminate notifications.
-- Poll adapters at configured interval.
+- Register `AXObserver` instances per running Office process.
+- Capture state on Accessibility notifications as the primary trigger path.
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
 - Enforce one-shot restore marker per app launch instance.
@@ -124,7 +120,6 @@ XPC-facing API (helper service):
   - `Restore now`
   - `Pause tracking`
   - `Clear snapshot`
-  - Polling interval selector
 - Start helper via `SMAppService` (login item).
 - Display entitlement state and trial/subscription status.
 
@@ -138,7 +133,7 @@ XPC-facing API (helper service):
 - `StripeEntitlementProvider` (Direct)
 - Shared `EntitlementState` model and cache policy.
 
-## 6. Event Capture and Polling Model
+## 6. Event Capture Model
 
 ### 6.1 Lifecycle Capture
 - Observe Office app launches/quits via `NSWorkspace`.
@@ -149,15 +144,19 @@ XPC-facing API (helper service):
   - `com.microsoft.Outlook`
   - `com.microsoft.onenote.mac`
 
-### 6.2 Polling
-- Timer loop based on `PollingInterval`.
-- Default: 15 seconds.
-- `none` disables polling and keeps launch/quit-only capture.
-- On each poll:
+### 6.2 Accessibility Capture (Primary)
+- Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt on first run).
+- On app launch, attach `AXObserver` to Office PID and subscribe to:
+  - `kAXWindowCreatedNotification`
+  - `kAXUIElementDestroyedNotification`
+  - `kAXFocusedWindowChangedNotification`
+  - `kAXTitleChangedNotification`
+- Coalesce event bursts with per-app debounce (~500-800 ms target).
+- On debounce fire:
   1. Fetch current app state from adapter.
   2. Compare with latest stored snapshot.
   3. Persist if changed.
-  4. Emit `statePolled` event.
+  4. Emit `stateCaptured` event with source `ax`.
 
 ## 7. Office Adapter Behavior
 
@@ -222,7 +221,7 @@ Failure handling:
 - last referenced snapshot ID
 
 ### 9.2 Force-save policy
-- Run during polling for W/E/P when unsaved docs detected.
+- Run during AX-triggered capture for W/E/P when unsaved docs detected.
 - Save artifacts into:
   - `<stateRoot>/unsaved/<artifact-id>.<ext>`
 - Add/update mapping in index.
@@ -253,6 +252,7 @@ App Group container root mirror:
 
 Required:
 - `NSAppleEventsUsageDescription` in both app targets.
+- Accessibility permission/trust for full capture fidelity.
 - App Group entitlement shared by menu app + helper.
 - Login item entitlement/registration via `SMAppService`.
 
@@ -314,17 +314,16 @@ No cross-channel purchase linking in v1.
 
 ### 13.1 Status DTO
 - paused flag
-- polling interval
 - helper running flag
 - entitlement summary
+- accessibility permission status
 - per-app latest snapshot timestamps
 - unsupported apps list (includes OneNote)
 
 ### 13.2 Commands
 - `restoreNow(app?)`: if nil, restore all supported apps with snapshots.
 - `clearSnapshot(app?)`: clear one or all snapshots and related unsaved artifacts not referenced.
-- `setPaused(Bool)`: toggles polling and restore triggers.
-- `setPollingInterval`: applies immediately and persists.
+- `setPaused(Bool)`: toggles capture and restore triggers.
 
 ## 14. Build Flavor Configuration
 - Shared compile-time flags:
@@ -348,26 +347,27 @@ No cross-channel purchase linking in v1.
 ## 16. Test Matrix
 
 1. Launch/quit capture across all Office apps.
-2. Polling interval changes apply immediately.
-3. W/E/P saved doc snapshot capture and diff correctness.
-4. Relaunch restore dedupe opens only missing docs.
-5. One-shot marker blocks repeat restore in same launch instance.
-6. Untitled force-save creates artifact + index mapping.
-7. Unsaved artifact restore works and purges when stale.
-8. Outlook relaunch-only flow executes without message-level restore attempts.
-9. OneNote shown unsupported in status/UI.
-10. Trial active allows monitor/restore.
-11. Trial/subscription inactive disables monitor/restore, preserves read-only history.
-12. MAS StoreKit entitlement refresh logic correct.
-13. Direct Stripe entitlement fetch/refresh logic correct.
-14. Offline grace expiration at > 7 days disables paid features.
-15. Pause tracking stops capture and automatic restore triggers.
-16. Clear snapshot removes active snapshot state and relevant artifacts.
-17. Verify no remote telemetry calls exist in app runtime.
+2. Accessibility-trusted path attaches AX observers and captures document/window transitions.
+3. Accessibility-denied path degrades gracefully and surfaces clear status.
+4. W/E/P saved doc snapshot capture and diff correctness.
+5. Relaunch restore dedupe opens only missing docs.
+6. One-shot marker blocks repeat restore in same launch instance.
+7. Untitled force-save creates artifact + index mapping.
+8. Unsaved artifact restore works and purges when stale.
+9. Outlook relaunch-only flow executes without message-level restore attempts.
+10. OneNote shown unsupported in status/UI.
+11. Trial active allows monitor/restore.
+12. Trial/subscription inactive disables monitor/restore, preserves read-only history.
+13. MAS StoreKit entitlement refresh logic correct.
+14. Direct Stripe entitlement fetch/refresh logic correct.
+15. Offline grace expiration at > 7 days disables paid features.
+16. Pause tracking stops capture and automatic restore triggers.
+17. Clear snapshot removes active snapshot state and relevant artifacts.
+18. Verify no remote telemetry calls exist in app runtime.
 
 ## 17. Acceptance Criteria
 - All required FRs in `PRD.md` implemented.
 - Support matrix behavior exactly matches v1 scope.
 - Both MAS and direct schemes build and run.
-- Helper remains stable during long-running polling sessions.
+- Helper remains stable during long-running AX monitoring sessions.
 - Test matrix pass (automated + manual scenarios).

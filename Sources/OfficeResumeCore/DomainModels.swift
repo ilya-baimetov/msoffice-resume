@@ -8,29 +8,6 @@ public enum OfficeApp: String, Codable, CaseIterable {
     case onenote
 }
 
-public enum PollingInterval: String, Codable, CaseIterable {
-    case oneSecond
-    case fiveSeconds
-    case fifteenSeconds
-    case oneMinute
-    case none
-
-    public var seconds: TimeInterval? {
-        switch self {
-        case .oneSecond:
-            return 1
-        case .fiveSeconds:
-            return 5
-        case .fifteenSeconds:
-            return 15
-        case .oneMinute:
-            return 60
-        case .none:
-            return nil
-        }
-    }
-}
-
 public struct DocumentSnapshot: Codable, Hashable {
     public let app: OfficeApp
     public let displayName: String
@@ -98,7 +75,7 @@ public struct AppSnapshot: Codable {
 public enum LifecycleEventType: String, Codable {
     case appLaunched
     case appTerminated
-    case statePolled
+    case stateCaptured
     case restoreStarted
     case restoreSucceeded
     case restoreFailed

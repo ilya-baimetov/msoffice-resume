@@ -1,66 +1,25 @@
 import Foundation
 
+public enum DaemonXPCConstants {
+    public static let machServiceName = "com.pragprod.msofficeresume.daemon"
+}
+
 public enum DaemonXPCError: Error, LocalizedError {
-    case endpointMissing
-    case endpointDecodeFailed
     case connectionFailed
-    case encodingFailed
     case decodingFailed
 
     public var errorDescription: String? {
         switch self {
-        case .endpointMissing:
-            return "Helper endpoint is unavailable."
-        case .endpointDecodeFailed:
-            return "Unable to decode helper endpoint."
         case .connectionFailed:
             return "Unable to connect to helper XPC service."
-        case .encodingFailed:
-            return "Unable to encode request payload."
         case .decodingFailed:
             return "Unable to decode response payload."
         }
     }
 }
 
-public enum DaemonEndpointStore {
-    public static func endpointFileURL() throws -> URL {
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw DaemonXPCError.endpointMissing
-        }
-
-        let directory = appSupport
-            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
-            .appendingPathComponent("ipc", isDirectory: true)
-
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("helper.endpoint")
-    }
-
-    public static func save(endpoint: NSXPCListenerEndpoint) throws {
-        let data = try NSKeyedArchiver.archivedData(withRootObject: endpoint, requiringSecureCoding: true)
-        let url = try endpointFileURL()
-        try data.write(to: url, options: [.atomic])
-    }
-
-    public static func load() throws -> NSXPCListenerEndpoint {
-        let url = try endpointFileURL()
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw DaemonXPCError.endpointMissing
-        }
-
-        let data = try Data(contentsOf: url)
-        let object = try NSKeyedUnarchiver.unarchivedObject(ofClass: NSXPCListenerEndpoint.self, from: data)
-        guard let endpoint = object else {
-            throw DaemonXPCError.endpointDecodeFailed
-        }
-        return endpoint
-    }
-}
-
 @objc public protocol OfficeResumeDaemonXPCProtocol {
     func getStatus(reply: @escaping (NSData?) -> Void)
-    func setPollingInterval(_ value: String, reply: @escaping (Bool) -> Void)
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (NSData?) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
@@ -71,9 +30,9 @@ public final class DaemonStateStore {
     private let queue = DispatchQueue(label: "com.pragprod.msofficeresume.daemon-state")
     private var status = DaemonStatusDTO(
         isPaused: false,
-        pollingInterval: .fifteenSeconds,
         helperRunning: true,
         entitlementActive: true,
+        accessibilityTrusted: false,
         latestSnapshotCapturedAt: [:],
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
     )
@@ -86,28 +45,13 @@ public final class DaemonStateStore {
     }
 
     @discardableResult
-    public func setPollingInterval(_ interval: PollingInterval) -> Bool {
-        queue.sync {
-            status = DaemonStatusDTO(
-                isPaused: status.isPaused,
-                pollingInterval: interval,
-                helperRunning: status.helperRunning,
-                entitlementActive: status.entitlementActive,
-                latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
-                unsupportedApps: status.unsupportedApps
-            )
-            return true
-        }
-    }
-
-    @discardableResult
     public func setPaused(_ paused: Bool) -> Bool {
         queue.sync {
             status = DaemonStatusDTO(
                 isPaused: paused,
-                pollingInterval: status.pollingInterval,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
             )
@@ -119,9 +63,9 @@ public final class DaemonStateStore {
         queue.sync {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
-                pollingInterval: status.pollingInterval,
                 helperRunning: running,
                 entitlementActive: status.entitlementActive,
+                accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
             )
@@ -132,9 +76,22 @@ public final class DaemonStateStore {
         queue.sync {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
-                pollingInterval: status.pollingInterval,
                 helperRunning: status.helperRunning,
                 entitlementActive: isActive,
+                accessibilityTrusted: status.accessibilityTrusted,
+                latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
+                unsupportedApps: status.unsupportedApps
+            )
+        }
+    }
+
+    public func setAccessibilityTrusted(_ isTrusted: Bool) {
+        queue.sync {
+            status = DaemonStatusDTO(
+                isPaused: status.isPaused,
+                helperRunning: status.helperRunning,
+                entitlementActive: status.entitlementActive,
+                accessibilityTrusted: isTrusted,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
             )
@@ -147,9 +104,9 @@ public final class DaemonStateStore {
             updated[app] = capturedAt
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
-                pollingInterval: status.pollingInterval,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: updated,
                 unsupportedApps: status.unsupportedApps
             )
@@ -160,9 +117,9 @@ public final class DaemonStateStore {
         queue.sync {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
-                pollingInterval: status.pollingInterval,
                 helperRunning: status.helperRunning,
                 entitlementActive: status.entitlementActive,
+                accessibilityTrusted: status.accessibilityTrusted,
                 latestSnapshotCapturedAt: snapshots,
                 unsupportedApps: status.unsupportedApps
             )
@@ -188,7 +145,6 @@ public final class DaemonStateStore {
 
 public struct DaemonServiceHandlers {
     public let getStatus: () async -> DaemonStatusDTO
-    public let setPollingInterval: (PollingInterval) async -> Bool
     public let setPaused: (Bool) async -> Bool
     public let restoreNow: (OfficeApp?) async -> RestoreCommandResultDTO
     public let clearSnapshot: (OfficeApp?) async -> Bool
@@ -196,14 +152,12 @@ public struct DaemonServiceHandlers {
 
     public init(
         getStatus: @escaping () async -> DaemonStatusDTO,
-        setPollingInterval: @escaping (PollingInterval) async -> Bool,
         setPaused: @escaping (Bool) async -> Bool,
         restoreNow: @escaping (OfficeApp?) async -> RestoreCommandResultDTO,
         clearSnapshot: @escaping (OfficeApp?) async -> Bool,
         recentEvents: @escaping (Int) async -> [LifecycleEventDTO]
     ) {
         self.getStatus = getStatus
-        self.setPollingInterval = setPollingInterval
         self.setPaused = setPaused
         self.restoreNow = restoreNow
         self.clearSnapshot = clearSnapshot
@@ -227,18 +181,6 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
         Task {
             let status = await handlers.getStatus()
             reply(try? encoder.encode(status) as NSData)
-        }
-    }
-
-    public func setPollingInterval(_ value: String, reply: @escaping (Bool) -> Void) {
-        guard let interval = PollingInterval(rawValue: value) else {
-            reply(false)
-            return
-        }
-
-        Task {
-            let ok = await handlers.setPollingInterval(interval)
-            reply(ok)
         }
     }
 
@@ -277,9 +219,6 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
             getStatus: {
                 store.currentStatus()
             },
-            setPollingInterval: { interval in
-                store.setPollingInterval(interval)
-            },
             setPaused: { paused in
                 store.setPaused(paused)
             },
@@ -297,7 +236,7 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
             },
             clearSnapshot: { app in
                 if let app {
-                    store.recordEvent(app: app, type: .statePolled, details: ["source": "clearSnapshot"])
+                    store.recordEvent(app: app, type: .stateCaptured, details: ["source": "clearSnapshot"])
                 }
                 return true
             },
@@ -313,15 +252,14 @@ public final class DaemonListenerHost: NSObject, NSXPCListenerDelegate {
     private let service: OfficeResumeDaemonService
 
     public init(service: OfficeResumeDaemonService = OfficeResumeDaemonService()) {
-        self.listener = NSXPCListener.anonymous()
+        self.listener = NSXPCListener(machServiceName: DaemonXPCConstants.machServiceName)
         self.service = service
         super.init()
         self.listener.delegate = self
     }
 
-    public func resume() throws {
+    public func resume() {
         listener.resume()
-        try DaemonEndpointStore.save(endpoint: listener.endpoint)
     }
 
     public func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
@@ -366,16 +304,6 @@ public final class DaemonXPCClient {
     public func setPaused(_ paused: Bool, completion: @escaping (Result<Bool, Error>) -> Void) {
         withRemote { proxy in
             proxy.setPaused(paused) { ok in
-                completion(.success(ok))
-            }
-        } onFailure: { error in
-            completion(.failure(error))
-        }
-    }
-
-    public func setPollingInterval(_ interval: PollingInterval, completion: @escaping (Result<Bool, Error>) -> Void) {
-        withRemote { proxy in
-            proxy.setPollingInterval(interval.rawValue) { ok in
                 completion(.success(ok))
             }
         } onFailure: { error in
@@ -456,8 +384,7 @@ public final class DaemonXPCClient {
             return connection
         }
 
-        let endpoint = try DaemonEndpointStore.load()
-        let newConnection = NSXPCConnection(listenerEndpoint: endpoint)
+        let newConnection = NSXPCConnection(machServiceName: DaemonXPCConstants.machServiceName, options: [])
         newConnection.remoteObjectInterface = NSXPCInterface(with: OfficeResumeDaemonXPCProtocol.self)
         newConnection.invalidationHandler = { [weak self] in
             self?.connection = nil

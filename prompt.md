@@ -22,6 +22,10 @@ Build a macOS 14+ Apple Silicon menu bar app with a login helper daemon that cap
   - StoreKit 2 for MAS target
   - Stripe + Cloudflare Worker entitlement service for direct target
 
+Capture strategy is locked:
+- Accessibility (`AXObserver`) is the primary event-interception mechanism for Office window/document transitions.
+- Polling fallback is removed in v1.
+
 ## Required Build Outputs
 1. Xcode workspace/projects with two app targets/schemes:
 - `OfficeResumeMAS`
@@ -39,7 +43,7 @@ Build a macOS 14+ Apple Silicon menu bar app with a login helper daemon that cap
 4. Implement Office adapters (W/E/P full, Outlook limited, OneNote unsupported).
 5. Implement restore engine with dedupe + one-shot launch marker.
 6. Implement unsaved temp artifact flow (force-save, index, purge).
-7. Implement helper daemon with polling + NSWorkspace lifecycle capture.
+7. Implement helper daemon with `NSWorkspace` lifecycle capture + Accessibility observer interception.
 8. Implement XPC interface and menu bar UI controls.
 9. Implement entitlement providers:
 - StoreKit 2 (MAS)
@@ -52,7 +56,7 @@ Build a macOS 14+ Apple Silicon menu bar app with a login helper daemon that cap
 - Do not add remote analytics telemetry.
 - Do not add OneNote restore in v1.
 - Keep restore policy global and auto-on relaunch.
-- Keep polling selector values exactly: `1s`, `5s`, `15s`, `1m`, `None`.
+- Surface Accessibility permission status in UI and degrade gracefully when not granted.
 - Enforce post-trial inactive behavior: monitoring + restore disabled, history read-only.
 - Enforce 7-day offline entitlement grace.
 
@@ -60,11 +64,12 @@ Build a macOS 14+ Apple Silicon menu bar app with a login helper daemon that cap
 Implementation is complete only when:
 1. Both targets build.
 2. Helper + menu bar + XPC flow works.
-3. W/E/P restore works with dedupe.
-4. Outlook relaunch-only behavior works.
-5. OneNote unsupported state is visible.
-6. Billing flows exist for MAS and direct channels.
-7. Test matrix in `spec.md` is executed and results are reported.
+3. Accessibility-first capture is functioning.
+4. W/E/P restore works with dedupe.
+5. Outlook relaunch-only behavior works.
+6. OneNote unsupported state is visible.
+7. Billing flows exist for MAS and direct channels.
+8. Test matrix in `spec.md` is executed and results are reported.
 
 ## Response Format for Progress and Completion
 When reporting progress:

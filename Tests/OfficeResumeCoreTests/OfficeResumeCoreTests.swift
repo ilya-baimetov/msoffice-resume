@@ -2,18 +2,20 @@ import XCTest
 @testable import OfficeResumeCore
 
 final class OfficeResumeCoreTests: XCTestCase {
-    func testPollingIntervalMappingsAndLabels() {
-        XCTAssertEqual(PollingInterval.oneSecond.seconds, 1)
-        XCTAssertEqual(PollingInterval.fiveSeconds.seconds, 5)
-        XCTAssertEqual(PollingInterval.fifteenSeconds.seconds, 15)
-        XCTAssertEqual(PollingInterval.oneMinute.seconds, 60)
-        XCTAssertNil(PollingInterval.none.seconds)
+    func testDaemonStatusRoundTripIncludesAccessibilityState() throws {
+        let status = DaemonStatusDTO(
+            isPaused: false,
+            helperRunning: true,
+            entitlementActive: true,
+            accessibilityTrusted: true,
+            latestSnapshotCapturedAt: [.word: Date(timeIntervalSince1970: 1_700_000_000)],
+            unsupportedApps: [.onenote]
+        )
 
-        XCTAssertEqual(PollingInterval.oneSecond.displayName, "1s")
-        XCTAssertEqual(PollingInterval.fiveSeconds.displayName, "5s")
-        XCTAssertEqual(PollingInterval.fifteenSeconds.displayName, "15s")
-        XCTAssertEqual(PollingInterval.oneMinute.displayName, "1m")
-        XCTAssertEqual(PollingInterval.none.displayName, "None")
+        let data = try JSONEncoder().encode(status)
+        let decoded = try JSONDecoder().decode(DaemonStatusDTO.self, from: data)
+        XCTAssertTrue(decoded.accessibilityTrusted)
+        XCTAssertEqual(decoded.latestSnapshotCapturedAt[.word], status.latestSnapshotCapturedAt[.word])
     }
 
     func testDocumentSnapshotRoundTrip() throws {
@@ -96,7 +98,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(loaded?.documents.first?.canonicalPath, "/tmp/sheet.xlsx")
 
         try await store.appendEvent(
-            LifecycleEvent(app: .excel, type: .statePolled, timestamp: Date(), details: ["documents": "1"])
+            LifecycleEvent(app: .excel, type: .stateCaptured, timestamp: Date(), details: ["documents": "1"])
         )
         let recent = try await store.recentEvents(limit: 10)
         XCTAssertEqual(recent.count, 1)

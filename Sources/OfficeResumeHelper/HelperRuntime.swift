@@ -52,10 +52,173 @@ final class OfficeLifecycleMonitor {
     }
 }
 
+final class OfficeAccessibilityMonitor {
+    typealias EventCallback = (OfficeApp, String, pid_t) -> Void
+
+    private final class ObserverEntry {
+        let app: OfficeApp
+        let pid: pid_t
+        let observer: AXObserver
+
+        init(app: OfficeApp, pid: pid_t, observer: AXObserver) {
+            self.app = app
+            self.pid = pid
+            self.observer = observer
+        }
+    }
+
+    private var observersByPID: [pid_t: ObserverEntry] = [:]
+    private var appByObserverID: [ObjectIdentifier: OfficeApp] = [:]
+    private var pidByObserverID: [ObjectIdentifier: pid_t] = [:]
+    private let callback: EventCallback
+    private(set) var isTrusted = false
+
+    init(callback: @escaping EventCallback) {
+        self.callback = callback
+    }
+
+    @discardableResult
+    func start(prompt: Bool = true) -> Bool {
+        let trusted = refreshTrust(prompt: prompt)
+        if !trusted {
+            DebugLog.warning("Accessibility permission is not granted; event interception will be limited")
+        }
+        return trusted
+    }
+
+    @discardableResult
+    func refreshTrust(prompt: Bool = false) -> Bool {
+        let trusted: Bool
+        if prompt {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            trusted = AXIsProcessTrustedWithOptions(options)
+        } else {
+            trusted = AXIsProcessTrusted()
+        }
+        isTrusted = trusted
+        return trusted
+    }
+
+    func stop() {
+        let pids = Array(observersByPID.keys)
+        for pid in pids {
+            detach(pid: pid)
+        }
+    }
+
+    func attach(app: OfficeApp, runningApplication: NSRunningApplication?) {
+        guard isTrusted else {
+            return
+        }
+        guard let runningApplication else {
+            return
+        }
+
+        let pid = runningApplication.processIdentifier
+        guard observersByPID[pid] == nil else {
+            return
+        }
+
+        var observerRef: AXObserver?
+        let createResult = AXObserverCreate(pid, Self.observerCallback, &observerRef)
+        guard createResult == .success, let observer = observerRef else {
+            DebugLog.warning(
+                "Failed to create AX observer",
+                metadata: [
+                    "app": app.rawValue,
+                    "pid": "\(pid)",
+                    "result": "\(createResult.rawValue)",
+                ]
+            )
+            return
+        }
+
+        let appElement = AXUIElementCreateApplication(pid)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        let notifications: [CFString] = [
+            kAXWindowCreatedNotification as CFString,
+            kAXUIElementDestroyedNotification as CFString,
+            kAXFocusedWindowChangedNotification as CFString,
+            kAXTitleChangedNotification as CFString,
+        ]
+
+        for notification in notifications {
+            let addResult = AXObserverAddNotification(observer, appElement, notification, refcon)
+            if addResult != .success && addResult != .notificationAlreadyRegistered {
+                DebugLog.warning(
+                    "Failed to register AX notification",
+                    metadata: [
+                        "app": app.rawValue,
+                        "pid": "\(pid)",
+                        "notification": notification as String,
+                        "result": "\(addResult.rawValue)",
+                    ]
+                )
+            }
+        }
+
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
+        observersByPID[pid] = ObserverEntry(app: app, pid: pid, observer: observer)
+        appByObserverID[ObjectIdentifier(observer)] = app
+        pidByObserverID[ObjectIdentifier(observer)] = pid
+        DebugLog.debug("AX observer attached", metadata: ["app": app.rawValue, "pid": "\(pid)"])
+    }
+
+    func detach(runningApplication: NSRunningApplication?) {
+        guard let runningApplication else {
+            return
+        }
+        detach(pid: runningApplication.processIdentifier)
+    }
+
+    private func detach(pid: pid_t) {
+        guard let entry = observersByPID.removeValue(forKey: pid) else {
+            return
+        }
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(entry.observer), .defaultMode)
+        appByObserverID.removeValue(forKey: ObjectIdentifier(entry.observer))
+        pidByObserverID.removeValue(forKey: ObjectIdentifier(entry.observer))
+        DebugLog.debug("AX observer detached", metadata: ["app": entry.app.rawValue, "pid": "\(pid)"])
+    }
+
+    private func handle(observer: AXObserver, notification: String) {
+        let observerID = ObjectIdentifier(observer)
+        guard
+            let app = appByObserverID[observerID],
+            let pid = pidByObserverID[observerID]
+        else {
+            return
+        }
+        callback(app, mapNotificationName(notification), pid)
+    }
+
+    private func mapNotificationName(_ notification: String) -> String {
+        switch notification {
+        case String(kAXWindowCreatedNotification):
+            return "windowCreated"
+        case String(kAXUIElementDestroyedNotification):
+            return "windowDestroyed"
+        case String(kAXFocusedWindowChangedNotification):
+            return "focusedWindowChanged"
+        case String(kAXTitleChangedNotification):
+            return "windowTitleChanged"
+        default:
+            return notification
+        }
+    }
+
+    private static let observerCallback: AXObserverCallback = { observer, _, notification, refcon in
+        guard let refcon else {
+            return
+        }
+        let monitor = Unmanaged<OfficeAccessibilityMonitor>.fromOpaque(refcon).takeUnretainedValue()
+        monitor.handle(observer: observer, notification: notification as String)
+    }
+}
+
 @MainActor
 final class HelperDaemonController {
     private enum DefaultsKey {
-        static let pollingInterval = "com.pragprod.msofficeresume.pollingInterval"
         static let isPaused = "com.pragprod.msofficeresume.isPaused"
     }
 
@@ -66,9 +229,12 @@ final class HelperDaemonController {
     private let adapters: [OfficeApp: OfficeAdapter]
     private let userDefaults: UserDefaults
 
-    private var pollingTimer: Timer?
-    private var pollingInterval: PollingInterval
     private var isPaused: Bool
+    private var observedLaunchIDs: [OfficeApp: String] = [:]
+    private var observedLaunchFirstSeenAt: [OfficeApp: Date] = [:]
+    private var pendingAXCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
+    private let accessibilityDebounceNanoseconds: UInt64 = 700_000_000
+    private let emptySnapshotProtectionWindow: TimeInterval = 60
 
     init(channel: StorageChannel? = nil, userDefaults: UserDefaults = .standard) throws {
         let stateStore = DaemonStateStore()
@@ -84,49 +250,49 @@ final class HelperDaemonController {
         self.adapters = OfficeAdapterFactory.makeDefaultAdapters(snapshotStore: snapshotStore)
         self.userDefaults = userDefaults
 
-        if let raw = userDefaults.string(forKey: DefaultsKey.pollingInterval),
-           let persisted = PollingInterval(rawValue: raw) {
-            pollingInterval = persisted
-        } else {
-            pollingInterval = .fifteenSeconds
-        }
         isPaused = userDefaults.bool(forKey: DefaultsKey.isPaused)
 
-        _ = stateStore.setPollingInterval(pollingInterval)
         _ = stateStore.setPaused(isPaused)
         stateStore.setHelperRunning(true)
+
+        DebugLog.info(
+            "Helper daemon initialized",
+            metadata: [
+                "paused": isPaused ? "true" : "false",
+            ]
+        )
     }
 
     func start() {
-        configurePollingTimer()
+        DebugLog.info("Helper daemon starting")
 
         Task {
             await refreshEntitlementStatus()
             await syncSnapshotTimestamps()
-            await pollRunningAppsIfNeeded(source: "startup")
+            await captureRunningAppsAtStartup()
         }
     }
 
     func stop() {
-        pollingTimer?.invalidate()
-        pollingTimer = nil
+        DebugLog.info("Helper daemon stopping")
+        for task in pendingAXCaptureTasks.values {
+            task.cancel()
+        }
+        pendingAXCaptureTasks.removeAll()
         stateStore.setHelperRunning(false)
     }
 
     func makeXPCHandlers() -> DaemonServiceHandlers {
         DaemonServiceHandlers(
             getStatus: { [weak self] in
-                await self?.status() ?? DaemonStatusDTO(
+                self?.status() ?? DaemonStatusDTO(
                     isPaused: true,
-                    pollingInterval: .none,
                     helperRunning: false,
                     entitlementActive: false,
+                    accessibilityTrusted: false,
                     latestSnapshotCapturedAt: [:],
                     unsupportedApps: OfficeBundleRegistry.unsupportedApps
                 )
-            },
-            setPollingInterval: { [weak self] interval in
-                await self?.setPollingInterval(interval) ?? false
             },
             setPaused: { [weak self] paused in
                 await self?.setPaused(paused) ?? false
@@ -138,7 +304,7 @@ final class HelperDaemonController {
                 await self?.clearSnapshot(app: app) ?? false
             },
             recentEvents: { [weak self] limit in
-                await self?.recentEvents(limit: limit) ?? []
+                self?.recentEvents(limit: limit) ?? []
             }
         )
     }
@@ -146,6 +312,14 @@ final class HelperDaemonController {
     func handleLifecycleEvent(app: OfficeApp, type: LifecycleEventType, runningApplication: NSRunningApplication?) {
         let details = lifecycleDetails(type: type, runningApplication: runningApplication)
         stateStore.recordEvent(app: app, type: type, details: details)
+        DebugLog.debug(
+            "Lifecycle event received",
+            metadata: [
+                "app": app.rawValue,
+                "event": type.rawValue,
+                "pid": details["pid"] ?? "",
+            ]
+        )
 
         Task {
             let event = LifecycleEvent(app: app, type: type, timestamp: Date(), details: details)
@@ -153,27 +327,54 @@ final class HelperDaemonController {
 
             if type == .appLaunched {
                 await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
+                await captureAppState(app: app, source: "launch")
             }
         }
+    }
+
+    func setAccessibilityTrusted(_ trusted: Bool) {
+        stateStore.setAccessibilityTrusted(trusted)
+        DebugLog.info(
+            "Accessibility permission state updated",
+            metadata: ["trusted": trusted ? "true" : "false"]
+        )
+    }
+
+    func handleAccessibilityEvent(app: OfficeApp, event: String, pid: pid_t) {
+        guard app != .onenote else {
+            return
+        }
+
+        let source = "ax:\(event)"
+        DebugLog.debug(
+            "Accessibility event captured",
+            metadata: ["app": app.rawValue, "event": event, "pid": "\(pid)"]
+        )
+
+        if let existing = pendingAXCaptureTasks[app] {
+            existing.cancel()
+        }
+
+        let task = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: self?.accessibilityDebounceNanoseconds ?? 700_000_000)
+            } catch {
+                return
+            }
+            await self?.captureAppState(app: app, source: source)
+        }
+        pendingAXCaptureTasks[app] = task
     }
 
     private func status() -> DaemonStatusDTO {
         stateStore.currentStatus()
     }
 
-    private func setPollingInterval(_ interval: PollingInterval) async -> Bool {
-        pollingInterval = interval
-        userDefaults.set(interval.rawValue, forKey: DefaultsKey.pollingInterval)
-        let ok = stateStore.setPollingInterval(interval)
-        configurePollingTimer()
-        return ok
-    }
-
     private func setPaused(_ paused: Bool) async -> Bool {
         isPaused = paused
         userDefaults.set(paused, forKey: DefaultsKey.isPaused)
         let ok = stateStore.setPaused(paused)
-        configurePollingTimer()
+        DebugLog.info("Pause state updated", metadata: ["paused": paused ? "true" : "false", "ok": ok ? "true" : "false"])
         return ok
     }
 
@@ -262,8 +463,22 @@ final class HelperDaemonController {
                 launchInstanceID: launchID,
                 currentlyOpenDocuments: currentDocs
             ) else {
+                DebugLog.debug(
+                    "Restore skipped (no plan)",
+                    metadata: ["app": app.rawValue, "source": source, "launchID": launchID]
+                )
                 return RestoreCommandResultDTO(succeeded: true, restoredCount: 0, failedCount: 0)
             }
+
+            DebugLog.info(
+                "Restore plan created",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                    "launchID": launchID,
+                    "documentsToOpen": "\(plan.documentsToOpen.count)",
+                ]
+            )
 
             stateStore.recordEvent(app: app, type: .restoreStarted, details: ["source": source, "launch": launchID])
             try await snapshotStore.appendEvent(
@@ -283,6 +498,14 @@ final class HelperDaemonController {
             try await restoreEngine.markRestoreCompleted(app: app, launchInstanceID: launchID)
 
             if restoreResult.failedPaths.isEmpty {
+                DebugLog.info(
+                    "Restore succeeded",
+                    metadata: [
+                        "app": app.rawValue,
+                        "source": source,
+                        "restored": "\(restoreResult.restoredPaths.count)",
+                    ]
+                )
                 stateStore.recordEvent(
                     app: app,
                     type: .restoreSucceeded,
@@ -297,6 +520,15 @@ final class HelperDaemonController {
                     )
                 )
             } else {
+                DebugLog.warning(
+                    "Restore partially failed",
+                    metadata: [
+                        "app": app.rawValue,
+                        "source": source,
+                        "restored": "\(restoreResult.restoredPaths.count)",
+                        "failed": "\(restoreResult.failedPaths.count)",
+                    ]
+                )
                 stateStore.recordEvent(
                     app: app,
                     type: .restoreFailed,
@@ -326,6 +558,15 @@ final class HelperDaemonController {
                 failedCount: restoreResult.failedPaths.count
             )
         } catch {
+            DebugLog.error(
+                "Restore failed",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                    "launchID": launchID,
+                    "error": error.localizedDescription,
+                ]
+            )
             stateStore.recordEvent(app: app, type: .restoreFailed, details: ["source": source, "error": error.localizedDescription])
             try? await snapshotStore.appendEvent(
                 LifecycleEvent(
@@ -339,46 +580,9 @@ final class HelperDaemonController {
         }
     }
 
-    private func configurePollingTimer() {
-        pollingTimer?.invalidate()
-        pollingTimer = nil
-
-        guard !isPaused else {
-            return
-        }
-
-        guard let seconds = pollingInterval.seconds else {
-            return
-        }
-
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task {
-                await self.pollRunningAppsIfNeeded(source: "timer")
-            }
-        }
-    }
-
-    private func pollRunningAppsIfNeeded(source: String) async {
-        await refreshEntitlementStatus()
-
-        guard !isPaused else {
-            return
-        }
-
-        guard await entitlementProvider.canMonitor() else {
-            return
-        }
-
-        for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
-            guard isAppRunning(app: app) else {
-                continue
-            }
-            await captureAppState(app: app, source: source)
-        }
-    }
-
     private func captureAppState(app: OfficeApp, source: String) async {
+        pendingAXCaptureTasks[app] = nil
+
         guard let adapter = adapters[app] else {
             return
         }
@@ -401,10 +605,20 @@ final class HelperDaemonController {
                 }
             }
 
+            observeLaunch(app: app, launchID: snapshot.launchInstanceID)
+
             let current = try await snapshotStore.loadSnapshot(for: app)
-            if shouldPersist(newSnapshot: snapshot, currentSnapshot: current) {
+            if shouldPersist(newSnapshot: snapshot, currentSnapshot: current, app: app, source: source) {
                 try await snapshotStore.saveSnapshot(snapshot)
                 stateStore.updateLatestSnapshot(app: app, capturedAt: snapshot.capturedAt)
+                DebugLog.debug(
+                    "Snapshot persisted",
+                    metadata: [
+                        "app": app.rawValue,
+                        "source": source,
+                        "documents": "\(snapshot.documents.count)",
+                    ]
+                )
             }
 
             if OfficeBundleRegistry.documentRestoreApps.contains(app) {
@@ -413,14 +627,22 @@ final class HelperDaemonController {
             }
 
             let details = ["source": source, "documents": "\(snapshot.documents.count)"]
-            stateStore.recordEvent(app: app, type: .statePolled, details: details)
-            try await snapshotStore.appendEvent(LifecycleEvent(app: app, type: .statePolled, timestamp: Date(), details: details))
+            stateStore.recordEvent(app: app, type: .stateCaptured, details: details)
+            try await snapshotStore.appendEvent(LifecycleEvent(app: app, type: .stateCaptured, timestamp: Date(), details: details))
         } catch {
-            stateStore.recordEvent(app: app, type: .statePolled, details: ["source": source, "error": error.localizedDescription])
+            DebugLog.error(
+                "State capture failed",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                    "error": error.localizedDescription,
+                ]
+            )
+            stateStore.recordEvent(app: app, type: .stateCaptured, details: ["source": source, "error": error.localizedDescription])
             try? await snapshotStore.appendEvent(
                 LifecycleEvent(
                     app: app,
-                    type: .statePolled,
+                    type: .stateCaptured,
                     timestamp: Date(),
                     details: ["source": source, "error": error.localizedDescription]
                 )
@@ -428,13 +650,64 @@ final class HelperDaemonController {
         }
     }
 
+    private func captureRunningAppsAtStartup() async {
+        guard !isPaused else {
+            return
+        }
+
+        guard await entitlementProvider.canMonitor() else {
+            return
+        }
+
+        for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
+            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+                continue
+            }
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            if !running.isEmpty {
+                await captureAppState(app: app, source: "startup")
+            }
+        }
+    }
+
+    private func observeLaunch(app: OfficeApp, launchID: String) {
+        guard observedLaunchIDs[app] != launchID else {
+            return
+        }
+
+        observedLaunchIDs[app] = launchID
+        observedLaunchFirstSeenAt[app] = Date()
+        DebugLog.debug(
+            "Observed launch instance",
+            metadata: [
+                "app": app.rawValue,
+                "launchID": launchID,
+            ]
+        )
+    }
+
     private func refreshEntitlementStatus() async {
         do {
             let state = try await entitlementProvider.refresh()
             stateStore.setEntitlementActive(state.isActive)
+            DebugLog.debug(
+                "Entitlement refreshed",
+                metadata: [
+                    "active": state.isActive ? "true" : "false",
+                    "plan": state.plan.rawValue,
+                ]
+            )
         } catch {
             let state = await entitlementProvider.currentState()
             stateStore.setEntitlementActive(state.isActive)
+            DebugLog.warning(
+                "Entitlement refresh failed; using current state",
+                metadata: [
+                    "active": state.isActive ? "true" : "false",
+                    "plan": state.plan.rawValue,
+                    "error": error.localizedDescription,
+                ]
+            )
         }
     }
 
@@ -454,9 +727,23 @@ final class HelperDaemonController {
         return details
     }
 
-    private func shouldPersist(newSnapshot: AppSnapshot, currentSnapshot: AppSnapshot?) -> Bool {
+    private func shouldPersist(
+        newSnapshot: AppSnapshot,
+        currentSnapshot: AppSnapshot?,
+        app: OfficeApp,
+        source: String
+    ) -> Bool {
         guard let currentSnapshot else {
             return true
+        }
+
+        if shouldSkipEarlyEmptySnapshot(
+            newSnapshot: newSnapshot,
+            currentSnapshot: currentSnapshot,
+            app: app,
+            source: source
+        ) {
+            return false
         }
 
         if currentSnapshot.documents != newSnapshot.documents {
@@ -464,6 +751,46 @@ final class HelperDaemonController {
         }
 
         return currentSnapshot.windowsMeta != newSnapshot.windowsMeta
+    }
+
+    private func shouldSkipEarlyEmptySnapshot(
+        newSnapshot: AppSnapshot,
+        currentSnapshot: AppSnapshot,
+        app: OfficeApp,
+        source: String
+    ) -> Bool {
+        guard OfficeBundleRegistry.documentRestoreApps.contains(app) else {
+            return false
+        }
+
+        guard !currentSnapshot.documents.isEmpty else {
+            return false
+        }
+
+        guard newSnapshot.documents.isEmpty else {
+            return false
+        }
+
+        guard let firstSeenAt = observedLaunchFirstSeenAt[app] else {
+            return false
+        }
+
+        let age = Date().timeIntervalSince(firstSeenAt)
+        guard age < emptySnapshotProtectionWindow else {
+            return false
+        }
+
+        DebugLog.debug(
+            "Skipped early empty snapshot overwrite",
+            metadata: [
+                "app": app.rawValue,
+                "source": source,
+                "ageSeconds": "\(Int(age))",
+                "windowSeconds": "\(Int(emptySnapshotProtectionWindow))",
+                "launchID": newSnapshot.launchInstanceID,
+            ]
+        )
+        return true
     }
 
     private func dedupeDocuments(_ documents: [DocumentSnapshot]) -> [DocumentSnapshot] {
@@ -480,13 +807,6 @@ final class HelperDaemonController {
         }
 
         return output
-    }
-
-    private func isAppRunning(app: OfficeApp) -> Bool {
-        guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
-            return false
-        }
-        return !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
     }
 
     private func launchInstanceID(for app: OfficeApp, runningApplication: NSRunningApplication?) -> String {
@@ -522,35 +842,76 @@ final class HelperDaemonController {
 final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private var host: DaemonListenerHost?
     private var monitor: OfficeLifecycleMonitor?
+    private var accessibilityMonitor: OfficeAccessibilityMonitor?
     private var controller: HelperDaemonController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
+            ProcessInfo.processInfo.disableAutomaticTermination("Office Resume Helper monitoring")
+            ProcessInfo.processInfo.disableSuddenTermination()
+
             let controller = try HelperDaemonController()
             self.controller = controller
             controller.start()
 
             let service = OfficeResumeDaemonService(handlers: controller.makeXPCHandlers())
             let host = DaemonListenerHost(service: service)
-            try host.resume()
+            host.resume()
             self.host = host
 
-            let monitor = OfficeLifecycleMonitor { [weak controller] app, type, runningApplication in
+            let accessibilityMonitor = OfficeAccessibilityMonitor { [weak controller] app, event, pid in
                 Task { @MainActor in
+                    controller?.handleAccessibilityEvent(app: app, event: event, pid: pid)
+                }
+            }
+            let trusted = accessibilityMonitor.start(prompt: true)
+            controller.setAccessibilityTrusted(trusted)
+            self.accessibilityMonitor = accessibilityMonitor
+
+            attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+
+            let monitor = OfficeLifecycleMonitor { [weak controller, weak accessibilityMonitor] app, type, runningApplication in
+                Task { @MainActor in
+                    if let accessibilityMonitor {
+                        let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
+                        controller?.setAccessibilityTrusted(trustedNow)
+                    }
                     controller?.handleLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
+                    if type == .appLaunched {
+                        accessibilityMonitor?.attach(app: app, runningApplication: runningApplication)
+                    } else if type == .appTerminated {
+                        accessibilityMonitor?.detach(runningApplication: runningApplication)
+                    }
                 }
             }
             monitor.start()
             self.monitor = monitor
+            DebugLog.info("OfficeResumeHelper app finished launching")
         } catch {
+            DebugLog.error("OfficeResumeHelper failed to start", metadata: ["error": error.localizedDescription])
             NSLog("OfficeResumeHelper failed to start: \(error.localizedDescription)")
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
+        accessibilityMonitor?.stop()
+        ProcessInfo.processInfo.enableSuddenTermination()
+        ProcessInfo.processInfo.enableAutomaticTermination("Office Resume Helper monitoring")
         Task { @MainActor in
             controller?.stop()
+        }
+    }
+
+    private func attachAccessibilityObserversForRunningApps(accessibilityMonitor: OfficeAccessibilityMonitor) {
+        let appsToObserve = OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps
+        for app in appsToObserve {
+            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+                continue
+            }
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+                accessibilityMonitor.attach(app: app, runningApplication: running)
+            }
         }
     }
 }

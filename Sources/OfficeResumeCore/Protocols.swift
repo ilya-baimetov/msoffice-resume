@@ -16,7 +16,6 @@ public protocol EntitlementProvider {
 
 public protocol DaemonXPC {
     func getStatus(_ reply: @escaping (DaemonStatusDTO) -> Void)
-    func setPollingInterval(_ value: String, reply: @escaping (Bool) -> Void)
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (RestoreCommandResultDTO) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
@@ -25,24 +24,24 @@ public protocol DaemonXPC {
 
 public struct DaemonStatusDTO: Codable {
     public let isPaused: Bool
-    public let pollingInterval: PollingInterval
     public let helperRunning: Bool
     public let entitlementActive: Bool
+    public let accessibilityTrusted: Bool
     public let latestSnapshotCapturedAt: [OfficeApp: Date]
     public let unsupportedApps: [OfficeApp]
 
     public init(
         isPaused: Bool,
-        pollingInterval: PollingInterval,
         helperRunning: Bool,
         entitlementActive: Bool,
+        accessibilityTrusted: Bool,
         latestSnapshotCapturedAt: [OfficeApp: Date],
         unsupportedApps: [OfficeApp]
     ) {
         self.isPaused = isPaused
-        self.pollingInterval = pollingInterval
         self.helperRunning = helperRunning
         self.entitlementActive = entitlementActive
+        self.accessibilityTrusted = accessibilityTrusted
         self.latestSnapshotCapturedAt = latestSnapshotCapturedAt
         self.unsupportedApps = unsupportedApps
     }

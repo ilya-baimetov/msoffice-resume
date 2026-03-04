@@ -23,10 +23,12 @@ Use this checklist to validate the local free-pass build end-to-end.
 - Open `Office Resume` from menu bar.
 - Expected: status shows `Helper Connected` and `Entitlement: Active`.
 
-2. Polling settings persistence
-- Change polling from `15s` to `5s`.
-- Quit and relaunch `Office Resume`.
-- Expected: polling remains `5s`.
+2. Accessibility permission status and recovery
+- Remove `Office Resume` from macOS Accessibility list (System Settings -> Privacy & Security -> Accessibility).
+- Relaunch `Office Resume`.
+- Expected: menu shows `Accessibility: Required` and offers `Open Accessibility Settings`.
+- Re-grant Accessibility, then click `Refresh`.
+- Expected: status returns to `Accessibility: Granted`.
 
 3. Word restore (saved docs)
 - Launch Word.

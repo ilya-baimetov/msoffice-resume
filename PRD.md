@@ -41,7 +41,7 @@ Office Resume restores user continuity by capturing Office state in the backgrou
 ## 6. Core User Experience
 ### 6.1 Background Behavior
 - App auto-starts at login.
-- Helper tracks Office app launches/quits plus document/window changes via notifications and AppleScript polling.
+- Helper tracks Office app launches/quits via `NSWorkspace` and document/window changes via Accessibility notifications (`AXObserver`) as the primary source.
 - On Office relaunch, restore is attempted automatically.
 
 ### 6.2 Restore Behavior
@@ -55,10 +55,10 @@ Required actions:
 - `Restore now`
 - `Pause tracking`
 - `Clear snapshot`
-- Polling interval selector (`1s`, `5s`, `15s`, `1m`, `None`)
 
 Required display:
 - Tracking status
+- Accessibility permission status and remediation guidance
 - Current entitlement status
 - Recent local restore/log events
 - OneNote marked as unsupported
@@ -68,10 +68,12 @@ Required display:
 - Capture app launch and quit events for Word/Excel/PowerPoint/Outlook/OneNote.
 - Persist minimal event records locally.
 
-### FR-2 Document/Window Capture
-- Word/Excel/PowerPoint: capture open documents with path/name/saved state.
+### FR-2 Document/Window Capture (Accessibility-First)
+- Use Accessibility notifications as the primary trigger for open/close/focus/title transitions and infer document/window transitions from those events.
+- Word/Excel/PowerPoint: capture open documents with path/name/saved state using adapter fetch after AX-triggered capture.
 - Outlook: capture basic window metadata only.
 - OneNote: no document capture; show unsupported status.
+- If Accessibility permission is not granted, degrade to lifecycle-only mode with explicit UI warning.
 
 ### FR-3 Snapshot Persistence
 - Maintain latest snapshot only per supported Office app.
@@ -107,8 +109,7 @@ Required display:
 
 ## 8. Non-Functional Requirements
 - macOS 14+ only; Apple Silicon only.
-- Menu bar app should remain responsive under polling.
-- Polling default is 15 seconds.
+- Menu bar app and helper should remain responsive under bursty Accessibility event traffic.
 - All logs stored locally; no remote analytics.
 - Errors should degrade gracefully and keep app operational.
 
@@ -141,10 +142,11 @@ Required display:
 1. All required menu actions implemented and functional.
 2. W/E/P document-level restore works for saved docs.
 3. Untitled force-save and restore lifecycle implemented.
-4. Outlook limited relaunch behavior works.
-5. OneNote unsupported state clearly exposed.
-6. Entitlement gating and offline grace validated for MAS and direct flows.
-7. Local-only logging/privacy constraints validated.
+4. Accessibility-first capture works when permission is granted, and degraded mode behavior is clear when denied.
+5. Outlook limited relaunch behavior works.
+6. OneNote unsupported state clearly exposed.
+7. Entitlement gating and offline grace validated for MAS and direct flows.
+8. Local-only logging/privacy constraints validated.
 
 ## 13. Risks and Mitigations
 ### Risk 1: MAS Apple Events/App Review constraints
@@ -162,6 +164,10 @@ Required display:
 ### Risk 4: Billing complexity across two channels
 - Impact: increased maintenance burden.
 - Mitigation: shared entitlement abstraction, channel-specific provider implementations.
+
+### Risk 5: Accessibility permission adoption
+- Impact: users may decline Accessibility access, reducing capture fidelity.
+- Mitigation: clear first-run guidance, visible permission status in menu, graceful degraded mode fallback.
 
 ## 14. Open Questions for Future Versions (Not Blocking v1)
 - OneNote support feasibility via other automation channels.

@@ -21,7 +21,16 @@ public struct NSAppleScriptExecutor: ScriptExecuting {
 
         let descriptor = scriptObject.executeAndReturnError(&errorDict)
         if let errorDict {
-            throw NSError(domain: "OfficeResumeAppleScript", code: 1, userInfo: errorDict as? [String: Any])
+            let number = errorDict[NSAppleScript.errorNumber] as? Int ?? 1
+            let message = errorDict[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
+            throw NSError(
+                domain: "OfficeResumeAppleScript",
+                code: number,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "AppleScript error \(number): \(message)",
+                    "OfficeResumeAppleScriptDetails": errorDict,
+                ]
+            )
         }
 
         return descriptor.stringValue ?? ""
@@ -289,71 +298,116 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         }
 
         return """
+        set __or_names to {}
+        set __or_paths to {}
+        set __or_saved_flags to {}
+
         tell application id "\(bundleID)"
-            set outputLines to {}
-            repeat with itemRef in \(collectionName)
-                set itemName to ""
-                set itemPath to ""
-                set itemSaved to true
-                try
-                    set itemName to (name of itemRef as string)
-                end try
-                try
-                    set itemSaved to (saved of itemRef as boolean)
-                end try
-                try
-                    set itemPath to POSIX path of (full name of itemRef)
-                on error
-                    try
-                        set itemPath to (full name of itemRef as string)
-                    on error
-                        set itemPath to ""
-                    end try
-                end try
-                set end of outputLines to (itemName & "\t" & itemPath & "\t" & (itemSaved as string))
-            end repeat
-            set AppleScript's text item delimiters to linefeed
-            set outputText to outputLines as string
-            set AppleScript's text item delimiters to ""
-            return outputText
+            try
+                set __or_names to (name of \(collectionName)) as list
+            end try
+            try
+                set __or_paths to (full name of \(collectionName)) as list
+            end try
+            try
+                set __or_saved_flags to (saved of \(collectionName)) as list
+            end try
         end tell
+
+        set __or_output_lines to {}
+        set __or_count to (count of __or_names)
+
+        repeat with __or_index from 1 to __or_count
+            set __or_name to ""
+            set __or_path to ""
+            set __or_saved to "true"
+
+            try
+                set __or_name to (item __or_index of __or_names) as string
+            end try
+
+            if __or_index <= (count of __or_paths) then
+                set __or_path_value to item __or_index of __or_paths
+                set __or_path_text to ""
+                try
+                    set __or_path_text to (__or_path_value as string)
+                end try
+
+                if (__or_path_text starts with "http://") or (__or_path_text starts with "https://") then
+                    set __or_path to __or_path_text
+                else
+                    try
+                        set __or_path to POSIX path of __or_path_value
+                    on error
+                        set __or_path to __or_path_text
+                    end try
+                end if
+            end if
+
+            if __or_index <= (count of __or_saved_flags) then
+                try
+                    set __or_saved to ((item __or_index of __or_saved_flags) as string)
+                end try
+            end if
+
+            set end of __or_output_lines to (__or_name & "\t" & __or_path & "\t" & __or_saved)
+        end repeat
+
+        set AppleScript's text item delimiters to linefeed
+        set __or_output_text to __or_output_lines as string
+        set AppleScript's text item delimiters to ""
+        return __or_output_text
         """
     }
 
     private func fetchOutlookWindowsScript() -> String {
         """
+        set __or_window_refs to {}
         tell application id "com.microsoft.Outlook"
-            set outputLines to {}
-            repeat with windowRef in windows
-                set windowID to ""
-                set windowTitle to ""
-                set windowBounds to ""
-                set windowClass to ""
-                try
-                    set windowID to (id of windowRef as string)
-                end try
-                try
-                    set windowTitle to (name of windowRef as string)
-                end try
-                try
-                    set windowBounds to (bounds of windowRef as string)
-                end try
-                try
-                    set windowClass to (class of windowRef as string)
-                end try
-                set end of outputLines to (windowID & "\t" & windowTitle & "\t" & windowBounds & "\t" & windowClass)
-            end repeat
-            set AppleScript's text item delimiters to linefeed
-            set outputText to outputLines as string
-            set AppleScript's text item delimiters to ""
-            return outputText
+            try
+                set __or_window_refs to every window
+            end try
         end tell
+
+        set __or_output_lines to {}
+        repeat with __or_window in __or_window_refs
+            set __or_window_id to ""
+            set __or_window_title to ""
+            set __or_window_bounds to ""
+            set __or_window_class to ""
+
+            tell application id "com.microsoft.Outlook"
+                try
+                    set __or_window_id to (id of __or_window as string)
+                end try
+                try
+                    set __or_window_title to (name of __or_window as string)
+                end try
+                try
+                    set __or_window_bounds to (bounds of __or_window as string)
+                end try
+                try
+                    set __or_window_class to (class of __or_window as string)
+                end try
+            end tell
+
+            set end of __or_output_lines to (__or_window_id & "\t" & __or_window_title & "\t" & __or_window_bounds & "\t" & __or_window_class)
+        end repeat
+
+        set AppleScript's text item delimiters to linefeed
+        set __or_output_text to __or_output_lines as string
+        set AppleScript's text item delimiters to ""
+        return __or_output_text
         """
     }
 
     private func openDocumentScript(path: String, app: OfficeApp) -> String {
         let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) ?? ""
         let escapedPath = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let lowerPath = path.lowercased()
+        if lowerPath.hasPrefix("http://") || lowerPath.hasPrefix("https://") {
+            return "tell application id \"\(bundleID)\" to open location \"\(escapedPath)\""
+        }
         return "tell application id \"\(bundleID)\" to open POSIX file \"\(escapedPath)\""
     }
 }

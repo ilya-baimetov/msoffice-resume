@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -20,7 +20,7 @@
 		540350FE07DFAE6D6B66AC16 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5F99934357C4CB3FAFD96BA9 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7338E9FEED70CCDC995EEF7B /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFD048CD819C1A22D466DD6 /* Storage.swift */; };
-		A07636A4D90F21E9CB897EDD /* PollingInterval+Display.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB005481041CED058AFD9B7 /* PollingInterval+Display.swift */; };
+		A7010CC18F935820E84C6F2F /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA05774F987DC39DCAD5414 /* DebugLog.swift */; };
 		ADB2664FB099CC827FC262A2 /* OfficeAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */; };
 		B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */; };
 		B2207C57FB3F3E34EC1A9C2A /* RestoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */; };
@@ -111,7 +111,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0BB005481041CED058AFD9B7 /* PollingInterval+Display.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PollingInterval+Display.swift"; sourceTree = "<group>"; };
 		2D3787B498286957D8A0E58D /* OfficeResumeCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OfficeResumeCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeAdapters.swift; sourceTree = "<group>"; };
 		41959A9EA7E71C4BB708F038 /* Entitlements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entitlements.swift; sourceTree = "<group>"; };
@@ -133,6 +132,7 @@
 		CD184F908F9CB8CD5A3B33F4 /* OfficeResumeDirect.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OfficeResumeDirect.entitlements; sourceTree = "<group>"; };
 		CF22C81325E81BB13E62C604 /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
 		E04D7C467F3B367D4B38109B /* DomainModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
+		FCA05774F987DC39DCAD5414 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonXPCBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -208,12 +208,12 @@
 			isa = PBXGroup;
 			children = (
 				FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */,
+				FCA05774F987DC39DCAD5414 /* DebugLog.swift */,
 				E04D7C467F3B367D4B38109B /* DomainModels.swift */,
 				41959A9EA7E71C4BB708F038 /* Entitlements.swift */,
 				999A82A7F7CEAC45008ED799 /* HelperLauncher.swift */,
 				3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */,
 				8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */,
-				0BB005481041CED058AFD9B7 /* PollingInterval+Display.swift */,
 				CF22C81325E81BB13E62C604 /* Protocols.swift */,
 				775C1C04165B4DDC42A34C23 /* RestoreEngine.swift */,
 				CCFD048CD819C1A22D466DD6 /* Storage.swift */,
@@ -389,6 +389,8 @@
 				en,
 			);
 			mainGroup = 641CB3A6289B37B9A85F09F6;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -407,12 +409,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				195CE5EC0A9257EF89831F8A /* DaemonXPCBridge.swift in Sources */,
+				A7010CC18F935820E84C6F2F /* DebugLog.swift in Sources */,
 				DD43772042E81D0B72EE40E3 /* DomainModels.swift in Sources */,
 				CF761B8E267B9B038700CE37 /* Entitlements.swift in Sources */,
 				1F7CE05DBCA49A183ED9F743 /* HelperLauncher.swift in Sources */,
 				ADB2664FB099CC827FC262A2 /* OfficeAdapters.swift in Sources */,
 				B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */,
-				A07636A4D90F21E9CB897EDD /* PollingInterval+Display.swift in Sources */,
 				49EDE795080CB527122DF54D /* Protocols.swift in Sources */,
 				B2207C57FB3F3E34EC1A9C2A /* RestoreEngine.swift in Sources */,
 				7338E9FEED70CCDC995EEF7B /* Storage.swift in Sources */,
