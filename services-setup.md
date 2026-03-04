@@ -69,8 +69,8 @@ sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
 
 ### 3.3 Verify installed apps
 
-- `/Applications/OfficeResume.app`
-- `/Applications/OfficeResumeHelper.app`
+- `/Applications/Office Resume.app`
+- Embedded helper login item: `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
 ### 3.4 Optional debug entitlement bypass (debug builds only)
 

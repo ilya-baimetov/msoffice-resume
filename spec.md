@@ -355,7 +355,9 @@ Must include:
 - Separate bundle IDs per distribution channel.
 - Common UI/helper/core behavior across channels.
 - Runtime app process/display naming unified as `OfficeResume`.
-- Direct `.pkg` preinstall policy: if `/Applications/OfficeResume.app` exists with MAS bundle ID, abort install and require uninstall-first flow.
+- Direct `.pkg` preinstall policy: if `/Applications/Office Resume.app` exists with MAS bundle ID, abort install and require uninstall-first flow.
+- Direct `.pkg` must be built with non-relocatable bundle components so install target remains `/Applications/Office Resume.app`.
+- Helper packaging policy: helper app bundle is embedded at `Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app` and is not installed as `/Applications/OfficeResumeHelper.app`.
 
 ## 15. Error Handling and Logging
 - Local-only structured logs.
@@ -385,7 +387,8 @@ Must include:
 18. No remote telemetry calls emitted.
 19. Direct free-pass only granted when backend allowlist/session says active.
 20. Direct `.pkg` install/upgrade works for repeat Direct installs.
-21. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/OfficeResume.app`.
+21. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/Office Resume.app`.
+22. Installed helper is not visible as a top-level `/Applications` app.
 
 ## 17. Acceptance Criteria
 - All PRD required behaviors implemented.

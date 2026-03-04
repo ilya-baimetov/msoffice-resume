@@ -1,15 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_PATH="/Applications/OfficeResume.app"
+APP_PATH="/Applications/Office Resume.app"
+LEGACY_APP_PATH="/Applications/OfficeResume.app"
 DIRECT_BUNDLE_ID="com.pragprod.msofficeresume.direct"
 MAS_BUNDLE_ID="com.pragprod.msofficeresume.mas"
 
-if [[ -d "$APP_PATH" ]]; then
-  installed_bundle_id="$(
-    /usr/bin/defaults read "$APP_PATH/Contents/Info" CFBundleIdentifier 2>/dev/null || true
-  )"
+check_conflict() {
+  local target_path="$1"
+  local installed_bundle_id=""
+  if [[ ! -d "$target_path" ]]; then
+    return
+  fi
 
+  installed_bundle_id="$(
+    /usr/bin/defaults read "$target_path/Contents/Info" CFBundleIdentifier 2>/dev/null || true
+  )"
   if [[ "$installed_bundle_id" == "$MAS_BUNDLE_ID" ]]; then
     cat <<MSG >&2
 Office Resume Direct cannot be installed over Office Resume MAS.
@@ -17,7 +23,7 @@ Uninstall the MAS app first, then run this installer again.
 
 Required steps:
 1. Quit Office Resume.
-2. Remove /Applications/OfficeResume.app.
+2. Remove "$target_path".
 3. Re-run this installer.
 MSG
     exit 1
@@ -27,10 +33,13 @@ MSG
     cat <<MSG >&2
 An unexpected Office Resume app is already installed:
   bundle id: $installed_bundle_id
-Please remove /Applications/OfficeResume.app before installing this package.
+Please remove "$target_path" before installing this package.
 MSG
     exit 1
   fi
-fi
+}
+
+check_conflict "$APP_PATH"
+check_conflict "$LEGACY_APP_PATH"
 
 exit 0

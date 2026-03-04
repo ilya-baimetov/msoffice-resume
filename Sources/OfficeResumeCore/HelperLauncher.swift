@@ -54,6 +54,10 @@ public enum HelperLauncher {
     }
 
     private static func resolveHelperURL(bundleIdentifier: String) -> URL? {
+        if let embedded = embeddedHelperURL() {
+            return embedded
+        }
+
         if let fromSibling = siblingHelperURL() {
             return fromSibling
         }
@@ -66,6 +70,24 @@ public enum HelperLauncher {
         let fromApplications = applicationsPath.appendingPathComponent(helperAppName, isDirectory: true)
         if FileManager.default.fileExists(atPath: fromApplications.path) {
             return fromApplications
+        }
+
+        return nil
+    }
+
+    private static func embeddedHelperURL() -> URL? {
+        guard let mainBundleURL = Bundle.main.bundleURL.standardizedFileURL as URL? else {
+            return nil
+        }
+
+        let candidate = mainBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("LoginItems", isDirectory: true)
+            .appendingPathComponent(helperAppName, isDirectory: true)
+
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
         }
 
         return nil

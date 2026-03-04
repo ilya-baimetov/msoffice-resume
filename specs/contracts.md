@@ -49,7 +49,9 @@ Dev-only fallback root (unsigned local runs):
 ## Packaging Contract
 - Direct canonical artifact is `.pkg`.
 - Direct installer may upgrade an existing Direct install in place.
-- Direct installer must not overwrite an installed MAS build at `/Applications/OfficeResume.app`; it must fail with uninstall-first instruction.
+- Direct installer must not overwrite an installed MAS build at `/Applications/Office Resume.app`; it must fail with uninstall-first instruction.
+- Direct installed visible app bundle name/path is `Office Resume.app` under `/Applications`.
+- Helper remains a separate app bundle for login-item semantics, but is embedded inside the main app (`Contents/Library/LoginItems/OfficeResumeHelper.app`) rather than installed as a top-level `/Applications` app.
 
 ## Restore Invariants
 - Restore runs once per launch instance (one-shot marker).

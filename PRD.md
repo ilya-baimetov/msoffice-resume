@@ -120,7 +120,10 @@ Required display:
 - Direct release artifact is a standard `.pkg` installer.
 - Installing newer `.pkg` updates existing Direct install cleanly.
 - Installer must detect opposite-channel install conflicts (`MAS` vs `Direct`) at install time and stop with an uninstall-first instruction.
+- Installed visible app path is `/Applications/Office Resume.app`.
+- Helper is packaged as embedded login item inside the main app (`Contents/Library/LoginItems/OfficeResumeHelper.app`) and must not appear as a separate top-level app in `/Applications`.
 - Installer should restart/launch the app cleanly after update.
+- Required runtime permissions are prompted on first launch/use (Accessibility at helper startup; Apple Events when Office automation is first invoked).
 
 ## 8. Non-Functional Requirements
 - macOS 14+ only; Apple Silicon only.
@@ -179,7 +182,7 @@ Required display:
 - Impact: user surprise from changed title/path.
 - Mitigation: clear docs and recoverability-first behavior.
 
-### Risk 4: Channel collision in `/Applications/OfficeResume.app`
+### Risk 4: Channel collision in `/Applications/Office Resume.app`
 - Impact: Direct installer could overwrite MAS app (or vice versa) if not guarded.
 - Mitigation: install-time channel conflict check and explicit uninstall-first UX.
 

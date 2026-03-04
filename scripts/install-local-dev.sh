@@ -18,6 +18,6 @@ Installed Office Resume from:
   $PKG_PATH
 
 Expected install paths:
-  /Applications/OfficeResume.app
-  /Applications/OfficeResumeHelper.app
+  /Applications/Office Resume.app
+  /Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app
 MSG
