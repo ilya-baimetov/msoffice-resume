@@ -42,8 +42,6 @@ JSON
 killall OfficeResumeDirect 2>/dev/null || true
 killall OfficeResumeHelper 2>/dev/null || true
 
-open "$INSTALL_ROOT/OfficeResumeHelper.app"
-sleep 1
 open "$INSTALL_ROOT/OfficeResumeDirect.app"
 
 cat <<MSG

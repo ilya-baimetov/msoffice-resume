@@ -8,15 +8,16 @@ Menu bar user interface and command surface for helper control.
 - `Sources/OfficeResumeMAS/**`
 
 ## Responsibilities
-1. Render helper connection status.
-2. Render entitlement status summary from daemon status.
+1. Render a compact, dockless menu-bar popover UI.
+2. Render helper availability and paused-state feedback.
 3. Render Accessibility status + settings action when needed.
 4. Expose controls:
-   - `Restore now`
-   - `Pause tracking`
-   - `Clear snapshot`
-   - `Quit Office Resume`
-5. Render recent event list and snapshot summary.
+   - `Restore Now`
+   - `Pause Tracking` / `Resume Tracking`
+   - `Advanced > Clear Snapshot`
+   - `Advanced > Open Debug Log`
+   - `Quit`
+5. Render unsupported app notice for OneNote.
 6. Initialize distribution channel marker for helper/core selection.
 
 ## Channel Rules
@@ -28,8 +29,9 @@ Menu bar user interface and command surface for helper control.
 - Do not move monitoring/restore logic into UI process.
 - Do not hide OneNote unsupported status.
 - Do not add per-app restore policy UI in v1.
+- Do not reintroduce persistent Dock presence for menu app targets.
 
 ## Component Acceptance Checks
 - Controls invoke corresponding XPC commands.
-- Entitlement label updates for active/inactive/trial and plan types.
 - Accessibility warning and remediation link appear when not trusted.
+- `Quit` terminates helper and menu app together.

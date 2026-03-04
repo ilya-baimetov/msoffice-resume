@@ -126,15 +126,21 @@ XPC-facing API (helper service):
 - Execute restore on relaunch events.
 - Enforce one-shot restore marker per app launch instance.
 - Enforce entitlement gating (`canMonitor` and `canRestore`).
+- Run as a headless LSUIElement process (no visible helper window).
 
 ### 5.2 MenuBarApp
-- Show status, recent events, and unsupported-app messaging.
-- Controls:
-  - `Restore now`
-  - `Pause tracking`
-  - `Clear snapshot`
+- Run as a dockless LSUIElement menu bar app.
+- Present a compact window-style menu (`MenuBarExtra`) with:
+  - `Pause Tracking` / `Resume Tracking`
+  - `Restore Now`
+  - `Advanced` submenu:
+    - `Clear Snapshot`
+    - `Open Debug Log`
+  - `Quit`
+- Show Accessibility requirement status and deep-link to system settings when missing.
+- Show unsupported app notice for OneNote.
 - Start helper via `SMAppService` (login item).
-- Display entitlement state and trial/subscription status.
+- `Quit` must terminate both menu app and helper process.
 
 ### 5.3 Core Storage + Engine
 - Snapshot storage, event logging, temp artifact indexing.
@@ -268,6 +274,7 @@ Required:
 - Accessibility permission/trust for full capture fidelity.
 - App Group entitlement shared by menu app + helper.
 - Login item entitlement/registration via `SMAppService`.
+- `LSUIElement=YES` for menu app and helper targets so neither shows a Dock icon.
 
 MAS-specific:
 - App Sandbox enabled.
@@ -354,7 +361,7 @@ No cross-channel purchase linking in v1.
   - operation
   - success/failure
   - error code/message
-- Keep recent log list available in menu bar UI.
+- Expose a menu action that reveals local debug logs in Finder.
 - No remote logging pipeline in v1.
 
 ## 16. Test Matrix

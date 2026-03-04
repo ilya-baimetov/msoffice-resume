@@ -24,6 +24,30 @@ public enum HelperLauncher {
         NSWorkspace.shared.openApplication(at: helperURL, configuration: configuration) { _, _ in }
     }
 
+    public static func terminateHelperIfRunning(bundleIdentifier: String = helperBundleIdentifier) {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+        guard !running.isEmpty else {
+            return
+        }
+
+        for app in running {
+            _ = app.terminate()
+        }
+
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            let remaining = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            if remaining.isEmpty {
+                return
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier) {
+            _ = app.forceTerminate()
+        }
+    }
+
     private static func resolveHelperURL(bundleIdentifier: String) -> URL? {
         if let fromLaunchServices = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
             return fromLaunchServices

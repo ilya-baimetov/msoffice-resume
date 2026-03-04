@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 public enum DebugLogLevel: String {
     case debug = "DEBUG"
@@ -69,6 +70,20 @@ public enum DebugLog {
 
     public static func logFilePath() -> String {
         (try? logFileURL().path) ?? ""
+    }
+
+    @discardableResult
+    public static func revealLogFileInFinder() -> Bool {
+        do {
+            let url = try logFileURL()
+            if !FileManager.default.fileExists(atPath: url.path) {
+                FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return true
+        } catch {
+            return false
+        }
     }
 
     private static func logFileURL(fileManager: FileManager = .default) throws -> URL {

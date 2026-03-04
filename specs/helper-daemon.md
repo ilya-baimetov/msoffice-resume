@@ -30,6 +30,7 @@ Background runtime that captures Office state and performs restore actions.
 
 ## Startup + Permissions
 - Keep helper LSUIElement behavior.
+- Keep helper fully headless (no visible helper UI windows).
 - Surface Accessibility trust state into daemon status.
 - Register and host XPC listener at helper startup.
 
