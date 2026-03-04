@@ -23,7 +23,6 @@ public enum DaemonXPCError: Error, LocalizedError {
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (NSData?) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
-    func recentEvents(_ limit: Int, reply: @escaping (NSData?) -> Void)
 }
 
 public final class DaemonStateStore {
@@ -39,8 +38,6 @@ public final class DaemonStateStore {
         latestSnapshotCapturedAt: [:],
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
     )
-    private var events: [LifecycleEventDTO] = []
-
     public init() {}
 
     public func currentStatus() -> DaemonStatusDTO {
@@ -147,21 +144,6 @@ public final class DaemonStateStore {
         }
     }
 
-    public func recordEvent(app: OfficeApp, type: LifecycleEventType, details: [String: String] = [:]) {
-        queue.sync {
-            events.append(LifecycleEventDTO(app: app, type: type, timestamp: Date(), details: details))
-            if events.count > 500 {
-                events.removeFirst(events.count - 500)
-            }
-        }
-    }
-
-    public func recentEvents(limit: Int) -> [LifecycleEventDTO] {
-        queue.sync {
-            let slice = events.suffix(max(0, limit))
-            return Array(slice.reversed())
-        }
-    }
 }
 
 public struct DaemonServiceHandlers {
@@ -169,20 +151,17 @@ public struct DaemonServiceHandlers {
     public let setPaused: (Bool) async -> Bool
     public let restoreNow: (OfficeApp?) async -> RestoreCommandResultDTO
     public let clearSnapshot: (OfficeApp?) async -> Bool
-    public let recentEvents: (Int) async -> [LifecycleEventDTO]
 
     public init(
         getStatus: @escaping () async -> DaemonStatusDTO,
         setPaused: @escaping (Bool) async -> Bool,
         restoreNow: @escaping (OfficeApp?) async -> RestoreCommandResultDTO,
-        clearSnapshot: @escaping (OfficeApp?) async -> Bool,
-        recentEvents: @escaping (Int) async -> [LifecycleEventDTO]
+        clearSnapshot: @escaping (OfficeApp?) async -> Bool
     ) {
         self.getStatus = getStatus
         self.setPaused = setPaused
         self.restoreNow = restoreNow
         self.clearSnapshot = clearSnapshot
-        self.recentEvents = recentEvents
     }
 }
 
@@ -228,13 +207,6 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
         }
     }
 
-    public func recentEvents(_ limit: Int, reply: @escaping (NSData?) -> Void) {
-        Task {
-            let items = await handlers.recentEvents(limit)
-            reply(try? encoder.encode(items) as NSData)
-        }
-    }
-
     private static func defaultHandlers(store: DaemonStateStore) -> DaemonServiceHandlers {
         DaemonServiceHandlers(
             getStatus: {
@@ -243,26 +215,11 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
             setPaused: { paused in
                 store.setPaused(paused)
             },
-            restoreNow: { app in
-                if let app {
-                    store.recordEvent(app: app, type: .restoreStarted)
-                    store.recordEvent(app: app, type: .restoreSucceeded)
-                } else {
-                    for app in [OfficeApp.word, .excel, .powerpoint, .outlook] {
-                        store.recordEvent(app: app, type: .restoreStarted)
-                        store.recordEvent(app: app, type: .restoreSucceeded)
-                    }
-                }
+            restoreNow: { _ in
                 return RestoreCommandResultDTO(succeeded: true, restoredCount: 0, failedCount: 0)
             },
-            clearSnapshot: { app in
-                if let app {
-                    store.recordEvent(app: app, type: .stateCaptured, details: ["source": "clearSnapshot"])
-                }
+            clearSnapshot: { _ in
                 return true
-            },
-            recentEvents: { limit in
-                store.recentEvents(limit: limit)
             }
         )
     }
@@ -355,25 +312,6 @@ public final class DaemonXPCClient {
         withRemote { proxy in
             proxy.clearSnapshot(app?.rawValue) { ok in
                 completion(.success(ok))
-            }
-        } onFailure: { error in
-            completion(.failure(error))
-        }
-    }
-
-    public func fetchRecentEvents(limit: Int, completion: @escaping (Result<[LifecycleEventDTO], Error>) -> Void) {
-        withRemote { proxy in
-            proxy.recentEvents(limit) { data in
-                guard let data else {
-                    completion(.failure(DaemonXPCError.decodingFailed))
-                    return
-                }
-                do {
-                    let decoded = try self.decoder.decode([LifecycleEventDTO].self, from: data as Data)
-                    completion(.success(decoded))
-                } catch {
-                    completion(.failure(error))
-                }
             }
         } onFailure: { error in
             completion(.failure(error))

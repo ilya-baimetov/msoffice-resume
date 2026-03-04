@@ -13,10 +13,12 @@
 		06F365087C1DF4B203569594 /* HelperRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5403064CD71B4CEAD68B4E /* HelperRuntime.swift */; };
 		195CE5EC0A9257EF89831F8A /* DaemonXPCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */; };
 		1F7CE05DBCA49A183ED9F743 /* HelperLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 999A82A7F7CEAC45008ED799 /* HelperLauncher.swift */; };
+		28977F73B9F3C2D3B3AAF648 /* OfficeResumeMenuUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */; };
 		2CFFDA43677EA33948C584AE /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
 		2E13B31F642784F060ED2C9C /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
 		43A1485C2ED49E84263ED1C1 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49EDE795080CB527122DF54D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF22C81325E81BB13E62C604 /* Protocols.swift */; };
+		52B981367A999058DAEB8BA6 /* OfficeResumeMenuUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */; };
 		540350FE07DFAE6D6B66AC16 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5F99934357C4CB3FAFD96BA9 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7338E9FEED70CCDC995EEF7B /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFD048CD819C1A22D466DD6 /* Storage.swift */; };
@@ -134,6 +136,7 @@
 		CD184F908F9CB8CD5A3B33F4 /* OfficeResumeDirect.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OfficeResumeDirect.entitlements; sourceTree = "<group>"; };
 		CF22C81325E81BB13E62C604 /* Protocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocols.swift; sourceTree = "<group>"; };
 		E04D7C467F3B367D4B38109B /* DomainModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
+		E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeResumeMenuUI.swift; sourceTree = "<group>"; };
 		FCA05774F987DC39DCAD5414 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		FE4B8C8430D5F20E24C5D471 /* DaemonXPCBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonXPCBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -174,6 +177,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		14A068B2B759A81E3E491EF7 /* MenuUIShared */ = {
+			isa = PBXGroup;
+			children = (
+				E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */,
+			);
+			name = MenuUIShared;
+			path = Sources/MenuUIShared;
+			sourceTree = "<group>";
+		};
 		292B79875D3CE3E2B07E063A /* OfficeResumeDirect */ = {
 			isa = PBXGroup;
 			children = (
@@ -228,6 +240,7 @@
 		641CB3A6289B37B9A85F09F6 = {
 			isa = PBXGroup;
 			children = (
+				14A068B2B759A81E3E491EF7 /* MenuUIShared */,
 				54CFFD016C823973E6A97CF0 /* OfficeResumeCore */,
 				B9EA85764621F28340E52479 /* OfficeResumeCoreTests */,
 				292B79875D3CE3E2B07E063A /* OfficeResumeDirect */,
@@ -447,6 +460,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCF65707077F1148FAA8C56C /* OfficeResumeMASApp.swift in Sources */,
+				28977F73B9F3C2D3B3AAF648 /* OfficeResumeMenuUI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,6 +469,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5724F2FC15C4C96C67556BB /* OfficeResumeDirectApp.swift in Sources */,
+				52B981367A999058DAEB8BA6 /* OfficeResumeMenuUI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

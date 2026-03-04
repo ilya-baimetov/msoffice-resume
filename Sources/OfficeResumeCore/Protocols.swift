@@ -19,7 +19,6 @@ public protocol DaemonXPC {
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (RestoreCommandResultDTO) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
-    func recentEvents(_ limit: Int, reply: @escaping ([LifecycleEventDTO]) -> Void)
 }
 
 public struct DaemonStatusDTO: Codable {
@@ -65,19 +64,5 @@ public struct RestoreCommandResultDTO: Codable {
         self.succeeded = succeeded
         self.restoredCount = restoredCount
         self.failedCount = failedCount
-    }
-}
-
-public struct LifecycleEventDTO: Codable {
-    public let app: OfficeApp
-    public let type: LifecycleEventType
-    public let timestamp: Date
-    public let details: [String: String]
-
-    public init(app: OfficeApp, type: LifecycleEventType, timestamp: Date, details: [String: String]) {
-        self.app = app
-        self.type = type
-        self.timestamp = timestamp
-        self.details = details
     }
 }

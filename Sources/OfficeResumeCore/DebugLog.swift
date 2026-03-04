@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 
 public enum DebugLogLevel: String {
     case debug = "DEBUG"
@@ -73,14 +72,19 @@ public enum DebugLog {
     }
 
     @discardableResult
-    public static func revealLogFileInFinder() -> Bool {
+    public static func openLogInConsole() -> Bool {
         do {
             let url = try logFileURL()
             if !FileManager.default.fileExists(atPath: url.path) {
                 FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
             }
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            return true
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = ["-a", "Console", url.path]
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
         } catch {
             return false
         }

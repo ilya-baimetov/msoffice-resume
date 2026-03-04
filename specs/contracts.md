@@ -21,7 +21,6 @@ This file defines cross-component interfaces and invariants.
 - `setPaused(Bool)`
 - `restoreNow(app?)`
 - `clearSnapshot(app?)`
-- `recentEvents(limit)`
 
 Status payload must include:
 - `isPaused`, `helperRunning`

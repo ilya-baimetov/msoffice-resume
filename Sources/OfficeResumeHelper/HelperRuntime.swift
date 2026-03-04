@@ -313,16 +313,12 @@ final class HelperDaemonController {
             },
             clearSnapshot: { [weak self] app in
                 await self?.clearSnapshot(app: app) ?? false
-            },
-            recentEvents: { [weak self] limit in
-                self?.recentEvents(limit: limit) ?? []
             }
         )
     }
 
     func handleLifecycleEvent(app: OfficeApp, type: LifecycleEventType, runningApplication: NSRunningApplication?) {
         let details = lifecycleDetails(type: type, runningApplication: runningApplication)
-        stateStore.recordEvent(app: app, type: type, details: details)
         DebugLog.debug(
             "Lifecycle event received",
             metadata: [
@@ -442,10 +438,6 @@ final class HelperDaemonController {
         }
     }
 
-    private func recentEvents(limit: Int) -> [LifecycleEventDTO] {
-        stateStore.recentEvents(limit: limit)
-    }
-
     private func restoreAfterLaunchIfNeeded(app: OfficeApp, runningApplication: NSRunningApplication?) async {
         await refreshEntitlementStatus()
 
@@ -506,7 +498,6 @@ final class HelperDaemonController {
                 ]
             )
 
-            stateStore.recordEvent(app: app, type: .restoreStarted, details: ["source": source, "launch": launchID])
             try await snapshotStore.appendEvent(
                 LifecycleEvent(app: app, type: .restoreStarted, timestamp: Date(), details: ["source": source, "launch": launchID])
             )
@@ -532,11 +523,6 @@ final class HelperDaemonController {
                         "restored": "\(restoreResult.restoredPaths.count)",
                     ]
                 )
-                stateStore.recordEvent(
-                    app: app,
-                    type: .restoreSucceeded,
-                    details: ["source": source, "restored": "\(restoreResult.restoredPaths.count)"]
-                )
                 try await snapshotStore.appendEvent(
                     LifecycleEvent(
                         app: app,
@@ -550,15 +536,6 @@ final class HelperDaemonController {
                     "Restore partially failed",
                     metadata: [
                         "app": app.rawValue,
-                        "source": source,
-                        "restored": "\(restoreResult.restoredPaths.count)",
-                        "failed": "\(restoreResult.failedPaths.count)",
-                    ]
-                )
-                stateStore.recordEvent(
-                    app: app,
-                    type: .restoreFailed,
-                    details: [
                         "source": source,
                         "restored": "\(restoreResult.restoredPaths.count)",
                         "failed": "\(restoreResult.failedPaths.count)",
@@ -593,7 +570,6 @@ final class HelperDaemonController {
                     "error": error.localizedDescription,
                 ]
             )
-            stateStore.recordEvent(app: app, type: .restoreFailed, details: ["source": source, "error": error.localizedDescription])
             try? await snapshotStore.appendEvent(
                 LifecycleEvent(
                     app: app,
@@ -657,7 +633,6 @@ final class HelperDaemonController {
             }
 
             let details = ["source": source, "documents": "\(snapshot.documents.count)"]
-            stateStore.recordEvent(app: app, type: .stateCaptured, details: details)
             try await snapshotStore.appendEvent(LifecycleEvent(app: app, type: .stateCaptured, timestamp: Date(), details: details))
         } catch {
             DebugLog.error(
@@ -668,7 +643,6 @@ final class HelperDaemonController {
                     "error": error.localizedDescription,
                 ]
             )
-            stateStore.recordEvent(app: app, type: .stateCaptured, details: ["source": source, "error": error.localizedDescription])
             try? await snapshotStore.appendEvent(
                 LifecycleEvent(
                     app: app,

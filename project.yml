@@ -27,6 +27,7 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - Sources/OfficeResumeMAS
+      - Sources/MenuUIShared
     dependencies:
       - target: OfficeResumeCore
     settings:
@@ -44,6 +45,7 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - Sources/OfficeResumeDirect
+      - Sources/MenuUIShared
     dependencies:
       - target: OfficeResumeCore
     settings:

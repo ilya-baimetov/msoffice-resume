@@ -35,7 +35,7 @@ Use this file as the system-level contract, then apply component specs for scope
 - `specs/contracts.md` - cross-component interfaces and invariants
 - `specs/core.md` - core module scope (`Sources/OfficeResumeCore/**`, `Tests/OfficeResumeCoreTests/**`)
 - `specs/helper-daemon.md` - helper runtime scope (`Sources/OfficeResumeHelper/**`)
-- `specs/menu-ui.md` - menu UI scope (`Sources/OfficeResumeDirect/**`, `Sources/OfficeResumeMAS/**`)
+- `specs/menu-ui.md` - menu UI scope (`Sources/OfficeResumeDirect/**`, `Sources/OfficeResumeMAS/**`, `Sources/MenuUIShared/**`)
 - `specs/backend-worker.md` - direct entitlement backend scope (`OfficeResumeBackend/**`)
 
 When conflicts exist:
@@ -112,7 +112,6 @@ XPC-facing API (helper service):
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (RestoreCommandResultDTO) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
-    func recentEvents(_ limit: Int, reply: @escaping ([LifecycleEventDTO]) -> Void)
 }
 ```
 
@@ -130,12 +129,13 @@ XPC-facing API (helper service):
 
 ### 5.2 MenuBarApp
 - Run as a dockless LSUIElement menu bar app.
+- Keep a shared menu UI implementation used by both Direct and MAS targets.
 - Present a compact window-style menu (`MenuBarExtra`) with:
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
   - `Advanced` submenu:
     - `Clear Snapshot`
-    - `Open Debug Log`
+    - `Open Debug Log in Console`
   - `Quit`
 - Show Accessibility requirement status and deep-link to system settings when missing.
 - Show unsupported app notice for OneNote.
@@ -361,7 +361,7 @@ No cross-channel purchase linking in v1.
   - operation
   - success/failure
   - error code/message
-- Expose a menu action that reveals local debug logs in Finder.
+- Expose a menu action that opens local debug logs in Console.
 - No remote logging pipeline in v1.
 
 ## 16. Test Matrix
