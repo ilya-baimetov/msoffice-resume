@@ -4,6 +4,20 @@ import Foundation
 import ServiceManagement
 #endif
 
+public struct AutostartHealth: Equatable {
+    public let mainAppEnabled: Bool
+    public let helperLoginItemEnabled: Bool
+
+    public var isHealthy: Bool {
+        mainAppEnabled && helperLoginItemEnabled
+    }
+
+    public init(mainAppEnabled: Bool, helperLoginItemEnabled: Bool) {
+        self.mainAppEnabled = mainAppEnabled
+        self.helperLoginItemEnabled = helperLoginItemEnabled
+    }
+}
+
 public enum HelperLauncher {
     public static let helperBundleIdentifier = "com.pragprod.msofficeresume.helper"
     public static let helperAppName = "OfficeResumeHelper.app"
@@ -51,6 +65,20 @@ public enum HelperLauncher {
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier) {
             _ = app.forceTerminate()
         }
+    }
+
+    public static func autostartHealth(bundleIdentifier: String = helperBundleIdentifier) -> AutostartHealth {
+#if canImport(ServiceManagement)
+        if #available(macOS 13.0, *) {
+            let mainAppService = SMAppService.mainApp
+            let helperService = SMAppService.loginItem(identifier: bundleIdentifier)
+            return AutostartHealth(
+                mainAppEnabled: mainAppService.status == .enabled,
+                helperLoginItemEnabled: helperService.status == .enabled
+            )
+        }
+#endif
+        return AutostartHealth(mainAppEnabled: true, helperLoginItemEnabled: true)
     }
 
     private static func resolveHelperURL(bundleIdentifier: String) -> URL? {
@@ -110,20 +138,33 @@ public enum HelperLauncher {
     private static func registerLoginItemIfAvailable(bundleIdentifier: String) {
 #if canImport(ServiceManagement)
         if #available(macOS 13.0, *) {
-            let service = SMAppService.loginItem(identifier: bundleIdentifier)
-            if service.status == .enabled {
-                return
+            let mainAppService = SMAppService.mainApp
+            if mainAppService.status != .enabled {
+                do {
+                    try mainAppService.register()
+                } catch {
+                    DebugLog.warning(
+                        "Main app login registration failed",
+                        metadata: [
+                            "error": error.localizedDescription,
+                        ]
+                    )
+                }
             }
-            do {
-                try service.register()
-            } catch {
-                DebugLog.warning(
-                    "Login item registration failed; falling back to manual helper launch",
-                    metadata: [
-                        "bundleIdentifier": bundleIdentifier,
-                        "error": error.localizedDescription,
-                    ]
-                )
+
+            let helperService = SMAppService.loginItem(identifier: bundleIdentifier)
+            if helperService.status != .enabled {
+                do {
+                    try helperService.register()
+                } catch {
+                    DebugLog.warning(
+                        "Login item registration failed; falling back to manual helper launch",
+                        metadata: [
+                            "bundleIdentifier": bundleIdentifier,
+                            "error": error.localizedDescription,
+                        ]
+                    )
+                }
             }
         }
 #endif

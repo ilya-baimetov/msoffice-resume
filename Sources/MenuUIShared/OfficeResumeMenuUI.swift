@@ -30,6 +30,16 @@ private struct OfficeResumeMenuContentView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if model.autostartHealthy {
+                Text("Autostart: OK")
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Autostart: click to fix") {
+                    model.openLoginItemsSettings()
+                }
+            }
+            Divider()
+
             if model.status.isPaused {
                 Text("Tracking is paused")
                     .foregroundStyle(.secondary)
@@ -98,6 +108,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
     )
     @Published var connectionOK = false
+    @Published var autostartHealthy = true
 
     private let channel: DistributionChannel
     private let client = DaemonXPCClient()
@@ -125,6 +136,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         }
         RuntimeConfiguration.setDistributionChannel(channel)
         HelperLauncher.ensureHelperRunning()
+        refreshAutostartHealth()
         if let cachedStatus = DaemonSharedIPC.loadStatus() {
             status = cachedStatus
             connectionOK = isHelperProcessRunning()
@@ -143,6 +155,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     self.connectionOK = true
                     self.startupRetryCount = 0
                     self.consecutiveStatusFailures = 0
+                    self.refreshAutostartHealth()
                 case .failure:
                     self.consecutiveStatusFailures += 1
                     if let fallbackStatus = DaemonSharedIPC.loadStatus() {
@@ -155,6 +168,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     } else if !self.connectionOK || self.consecutiveStatusFailures >= 3 {
                         self.connectionOK = false
                     }
+                    self.refreshAutostartHealth()
                     self.retryStartupIfNeeded()
                 }
             }
@@ -204,6 +218,18 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
+    func openLoginItemsSettings() {
+        let urls: [String] = [
+            "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.users?LoginItems",
+        ]
+        for raw in urls {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+    }
+
     func openDebugLogInConsole() {
         if !DebugLog.openLogInConsole() {
             DebugLog.warning("Failed to open debug log in Console")
@@ -244,5 +270,9 @@ final class OfficeResumeMenuViewModel: ObservableObject {
 
     private func isHelperProcessRunning() -> Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: HelperLauncher.helperBundleIdentifier).isEmpty
+    }
+
+    private func refreshAutostartHealth() {
+        autostartHealthy = HelperLauncher.autostartHealth().isHealthy
     }
 }

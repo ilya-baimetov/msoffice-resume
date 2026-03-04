@@ -123,6 +123,7 @@ XPC-facing API (helper service):
 - Capture state on Accessibility events as primary trigger.
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
+- Execute startup restore pass for already-running Office apps.
 - Enforce one-shot restore marker per app launch instance.
 - Enforce entitlement gating (`canMonitor`, `canRestore`).
 - Run as LSUIElement (headless; no visible window).
@@ -139,6 +140,9 @@ XPC-facing API (helper service):
 - Show accessibility status:
   - `Accessibility: OK`
   - `Accessibility: click to fix` (opens system settings)
+- Show autostart status:
+  - `Autostart: OK`
+  - `Autostart: click to fix` (opens Login Items settings)
 - Start helper via `SMAppService` and sibling-launch fallback.
 - `Quit` must terminate both menu app and helper.
 
@@ -206,7 +210,7 @@ XPC-facing API (helper service):
 
 ## 8. Restore Engine
 
-On Office app launch:
+On Office app launch (and helper startup pass for already-running apps):
 1. Refresh entitlement.
 2. If paused or cannot restore, return.
 3. Load latest snapshot for app.
@@ -372,23 +376,25 @@ Must include:
 3. Accessibility-denied path degrades gracefully and surfaces clear status.
 4. W/E/P saved doc snapshot capture and diff correctness.
 5. Relaunch restore dedupe opens only missing docs.
-6. One-shot marker blocks repeat restore in same launch instance.
-7. Untitled force-save creates artifact + index mapping.
-8. Unsaved artifact restore works and stale purge executes.
-9. Outlook relaunch-only flow executes without message-level restore.
-10. OneNote remains unsupported.
-11. Trial active allows monitor/restore.
-12. Inactive entitlement disables monitor/restore while keeping read-only status/history.
-13. MAS StoreKit refresh logic correct.
-14. Direct Stripe entitlement refresh logic correct.
-15. Offline grace expiration > 7 days disables paid features.
-16. Pause tracking stops capture and auto-restore triggers.
-17. Clear snapshot removes active restore state and relevant artifacts.
-18. No remote telemetry calls emitted.
-19. Direct free-pass only granted when backend allowlist/session says active.
-20. Direct `.pkg` install/upgrade works for repeat Direct installs.
-21. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/Office Resume.app`.
-22. Installed helper is not visible as a top-level `/Applications` app.
+6. Startup restore pass handles already-running Office apps after login/reboot.
+7. One-shot marker blocks repeat restore in same launch instance.
+8. Untitled force-save creates artifact + index mapping.
+9. Unsaved artifact restore works and stale purge executes.
+10. Outlook relaunch-only flow executes without message-level restore.
+11. OneNote remains unsupported.
+12. Trial active allows monitor/restore.
+13. Inactive entitlement disables monitor/restore while keeping read-only status/history.
+14. MAS StoreKit refresh logic correct.
+15. Direct Stripe entitlement refresh logic correct.
+16. Offline grace expiration > 7 days disables paid features.
+17. Pause tracking stops capture and auto-restore triggers.
+18. Clear snapshot removes active restore state and relevant artifacts.
+19. No remote telemetry calls emitted.
+20. Direct free-pass only granted when backend allowlist/session says active.
+21. Direct `.pkg` install/upgrade works for repeat Direct installs.
+22. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/Office Resume.app`.
+23. Installed helper is not visible as a top-level `/Applications` app.
+24. Menu autostart status reflects main app + helper login-item health and can open Login Items settings.
 
 ## 17. Acceptance Criteria
 - All PRD required behaviors implemented.

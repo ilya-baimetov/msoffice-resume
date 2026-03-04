@@ -11,17 +11,20 @@ Menu bar user interface and command surface for helper control.
 ## Responsibilities
 1. Render a standard dockless macOS menu (`MenuBarExtra` menu style).
 2. Render helper availability and paused-state feedback.
-3. Render Accessibility status exactly as:
+3. Render autostart health exactly as:
+   - `Autostart: OK` when main app + helper login item are enabled
+   - `Autostart: click to fix` (opens Login Items settings) when not healthy
+4. Render Accessibility status exactly as:
    - `Accessibility: OK` when trusted
    - `Accessibility: click to fix` (opens system Accessibility settings) when not trusted
-4. Expose controls:
+5. Expose controls:
    - `Restore Now`
    - `Pause Tracking` / `Resume Tracking`
    - `Advanced > Clear Snapshot`
    - `Advanced > Open Debug Log in Console`
    - `Quit`
-5. Use XPC for helper commands/status when available; fall back to shared IPC status + distributed command notifications.
-6. Set distribution channel marker used by core entitlement selection, while keeping non-billing runtime behavior unified.
+6. Use XPC for helper commands/status when available; fall back to shared IPC status + distributed command notifications.
+7. Set distribution channel marker used by core entitlement selection, while keeping non-billing runtime behavior unified.
 
 ## Channel Rules
 - Direct target sets channel marker to `direct`.
@@ -38,6 +41,8 @@ Menu bar user interface and command surface for helper control.
 
 ## Component Acceptance Checks
 - Controls invoke helper commands via XPC or fallback distributed notifications.
+- Autostart line shows `Autostart: OK` when main app + helper login-item registration are healthy.
+- Autostart line is clickable (`Autostart: click to fix`) when registration is not healthy.
 - Accessibility line shows `Accessibility: OK` when trusted.
 - Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
 - Accessibility line updates when permission is granted/revoked while app/helper are running.

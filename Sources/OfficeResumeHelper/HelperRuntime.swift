@@ -278,6 +278,7 @@ final class HelperDaemonController {
         Task {
             await refreshEntitlementStatus()
             await syncSnapshotTimestamps()
+            await restoreRunningAppsAtStartup()
             await captureRunningAppsAtStartup()
         }
     }
@@ -686,6 +687,29 @@ final class HelperDaemonController {
             if !running.isEmpty {
                 await captureAppState(app: app, source: "startup")
             }
+        }
+    }
+
+    private func restoreRunningAppsAtStartup() async {
+        guard !isPaused else {
+            return
+        }
+
+        guard await entitlementProvider.canRestore() else {
+            return
+        }
+
+        for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
+            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+                continue
+            }
+
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            guard let runningApplication = running.first else {
+                continue
+            }
+
+            _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
         }
     }
 

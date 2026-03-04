@@ -12,11 +12,16 @@ Background runtime that captures Office state and performs restore actions.
 2. Observe Accessibility events via `AXObserver` for running Office processes.
 3. Trigger snapshot capture on AX signals (debounced per app).
 4. Trigger auto-restore on app launch using restore engine.
-5. Expose helper control/status over XPC service with shared IPC fallback.
-6. Enforce entitlement and pause gating on capture/restore paths.
-7. Keep behavior channel-neutral except entitlement provider implementation selected by channel.
+5. Trigger startup restore pass for already-running Office apps when helper starts.
+6. Expose helper control/status over XPC service with shared IPC fallback.
+7. Enforce entitlement and pause gating on capture/restore paths.
+8. Keep behavior channel-neutral except entitlement provider implementation selected by channel.
 
 ## Required Runtime Behavior
+- On helper startup:
+  - refresh entitlement state
+  - run startup restore pass for currently running supported Office apps
+  - capture startup state for currently running supported Office apps
 - On app launch:
   - append lifecycle event
   - attempt restore if eligible

@@ -46,6 +46,7 @@ Office Resume restores continuity by capturing Office state in the background an
 - App auto-starts at login.
 - Helper tracks Office launches/quits via `NSWorkspace` and document/window changes via `AXObserver` Accessibility notifications.
 - On Office relaunch, restore is attempted automatically.
+- On helper startup, a restore pass is attempted for currently running Office apps (to cover login/reboot races where Office relaunches before helper is ready).
 
 ### 6.2 Restore Behavior
 - Global policy applies to all supported apps.
@@ -63,6 +64,7 @@ Required actions:
 
 Required display:
 - Helper connection status
+- Autostart health status and remediation action
 - Accessibility permission status and remediation action
 - Current entitlement status
 - Recent local status/log signals
@@ -96,9 +98,16 @@ Required display:
 
 ### FR-5 Restore Execution
 - Auto-run restore on relaunch for supported apps.
+- Auto-run a startup restore pass for currently running supported apps.
 - Dedupe against currently open docs.
 - Apply one-shot marker per launch instance.
 - Log per-item success/failure locally.
+
+### FR-10 Autostart Reliability Visibility
+- Menu must surface autostart status:
+  - `Autostart: OK` when both main app and helper login-item registration are enabled.
+  - `Autostart: click to fix` when registration is not healthy.
+- `Autostart: click to fix` opens Login Items settings.
 
 ### FR-6 Entitlement and Gating
 - 14-day trial.
