@@ -1,45 +1,45 @@
-# Direct Distribution Hardening (Signing, Notarization, Paid Flow)
+# Direct Distribution Hardening (Signing, Notarization, Billing, Review Gates)
 
-This document defines the minimum hardening path before broad external distribution.
+This is the minimum hardening baseline before broad external Direct distribution.
 
-## 1) Build and Package for Direct Distribution
+## 1. Build Canonical Direct Installer (.pkg)
 
-Use:
+Run:
 
 ```bash
 ./scripts/release-direct.sh
 ```
 
-Output:
+Outputs:
 
-- `dist/release-direct/`
-- `dist/OfficeResume-direct-unsigned.zip`
+- `dist/OfficeResume-direct-unsigned.pkg`
+- `dist/release-direct/` (staged payload with `OfficeResume.app` + `OfficeResumeHelper.app`)
 
-## 2) Sign With Developer ID
+The package uses a stable package identifier/version and supports upgrade installs.
 
-Set environment variable:
+## 2. Sign App Bundles + Installer Package
+
+Set:
 
 ```bash
 export DEVELOPER_ID_APPLICATION="Developer ID Application: <Company> (<TEAMID>)"
+export DEVELOPER_ID_INSTALLER="Developer ID Installer: <Company> (<TEAMID>)"
 ```
 
-Then rerun:
+Rerun:
 
 ```bash
 ./scripts/release-direct.sh
 ```
 
-The script signs:
+Result:
 
-- `OfficeResumeHelper.app`
-- `OfficeResumeDirect.app`
-- nested framework binaries
+- app bundles are codesigned and verified
+- signed package produced at `dist/OfficeResume-direct-signed.pkg`
 
-Verification is performed via `codesign --verify --deep --strict`.
+## 3. Notarize
 
-## 3) Notarize
-
-Store notary credentials once:
+Store credentials once:
 
 ```bash
 xcrun notarytool store-credentials office-resume-notary \
@@ -48,64 +48,61 @@ xcrun notarytool store-credentials office-resume-notary \
   --password "<app-specific-password>"
 ```
 
-Run with profile:
+Then:
 
 ```bash
 export NOTARYTOOL_PROFILE="office-resume-notary"
 ./scripts/release-direct.sh
 ```
 
-Output:
+Expected:
 
-- `dist/OfficeResume-direct-signed.zip` (signed + notarized + stapled)
+- pkg submitted to notary service
+- pkg stapled and validated
 
-## 4) Backend Paid-Flow Hardening
+## 4. Runtime/Billing Security Baseline
 
-Current backend protections in place:
+Required protections:
 
-- Stripe webhook signature verification (`Stripe-Signature`) when `STRIPE_WEBHOOK_SECRET` is configured.
-- Replay window enforcement (`STRIPE_WEBHOOK_TOLERANCE_SECONDS`, default 300s).
-- Free-pass allowlist override via `FREE_PASS_EMAILS`.
+- Direct free-pass is backend-authoritative via verified session + `FREE_PASS_EMAILS` allowlist
+- Production client path has no local free-pass file/env override behavior
+- Stripe webhook signature verification enabled (`STRIPE_WEBHOOK_SECRET`)
+- Stripe replay-window enforced (`STRIPE_WEBHOOK_TOLERANCE_SECONDS`, default 300)
 
-Recommended Worker env:
+Worker env baseline:
 
+- `MAGIC_LINK_SIGNING_SECRET`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `MAGIC_LINK_SIGNING_SECRET`
 - `FREE_PASS_EMAILS` (optional)
 - `STRIPE_WEBHOOK_TOLERANCE_SECONDS` (optional)
 
-## 5) Paid Flow End-to-End Validation Plan
+## 5. CI and Review Gates
 
-1. Auth flow
-- Request magic link and verify session token.
-- Fetch `/entitlements/current`.
-- Expected for new user: active `trial` entitlement.
+Required PR checks:
 
-2. Stripe billing transition
-- Create test subscription in Stripe.
-- Deliver signed webhook to `/webhooks/stripe`.
-- Fetch `/entitlements/current` again.
-- Expected: active `monthly` or `yearly` with updated `validUntil`.
+- `docs-guardrails`
+- `ui-guardrails`
+- `pr-scorecard-guardrail`
+- `spec-drift-guardrails`
+- `build-test-mas`
+- `build-test-direct`
+- `backend-tests`
 
-3. Cancellation/expiry
-- Trigger `customer.subscription.deleted`.
-- Fetch entitlement.
-- Expected: inactive or trial fallback according to policy.
+Review model:
 
-4. Offline grace app behavior
-- Disconnect network after valid entitlement cache is written.
-- Expected: restore/monitor remains active for up to 7 days, then disables.
+- GitHub Copilot review enabled and auto-requested on PRs.
+- Copilot guidance from `.github/copilot-instructions.md`.
+- Copilot is advisory; CI checks are merge gate.
 
-5. Free-pass allowlist
-- Add test email to `FREE_PASS_EMAILS`.
-- Fetch entitlement after auth.
-- Expected: active yearly free-pass without billing.
+## 6. Release Validation Checklist
 
-## 6) Release Gate Before Public Rollout
-
-- Local checklist in `docs/local-functional-checklist.md` fully passed.
-- `xcodebuild` MAS + Direct tests green.
-- `npm test` backend tests green.
-- Signed and notarized direct bundle produced.
-- Stripe webhook signature checks validated in staging.
+1. `./scripts/eval-docs-consistency.sh` passes.
+2. `./scripts/eval-ui-guardrails.sh` passes.
+3. MAS/Direct/helper builds and tests pass.
+4. Backend `npm run lint` and `npm test` pass.
+5. Direct pkg install and upgrade path validated.
+6. Postinstall behavior restarts/relaunches app cleanly.
+7. Free-pass allowlist works for internal accounts.
+8. Non-allowlisted accounts require trial/subscription entitlement.
+9. No remote analytics/telemetry introduced.

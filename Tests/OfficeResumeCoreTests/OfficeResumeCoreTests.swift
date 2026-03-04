@@ -62,7 +62,10 @@ final class OfficeResumeCoreTests: XCTestCase {
 
     func testRestoreEngineDedupeAndOneShotMarker() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine")
-        let snapshotStore = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let snapshotStore = FileSnapshotStore(
+            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            baseDirectoryOverride: tempRoot
+        )
         let markerURL = tempRoot.appendingPathComponent("restore-markers.json")
         let markerStore = try FileRestoreMarkerStore(markerFileURL: markerURL)
         let engine = RestoreEngine(snapshotStore: snapshotStore, markerStore: markerStore)
@@ -105,7 +108,10 @@ final class OfficeResumeCoreTests: XCTestCase {
 
     func testRestoreEngineIgnoresPlaceholderCanonicalPaths() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine-placeholder")
-        let snapshotStore = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let snapshotStore = FileSnapshotStore(
+            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            baseDirectoryOverride: tempRoot
+        )
         let markerURL = tempRoot.appendingPathComponent("restore-markers.json")
         let markerStore = try FileRestoreMarkerStore(markerFileURL: markerURL)
         let engine = RestoreEngine(snapshotStore: snapshotStore, markerStore: markerStore)
@@ -135,7 +141,10 @@ final class OfficeResumeCoreTests: XCTestCase {
 
     func testFileSnapshotStoreRoundTripAndEvents() async throws {
         let tempRoot = makeTempDirectory(name: "snapshot-store")
-        let store = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let store = FileSnapshotStore(
+            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            baseDirectoryOverride: tempRoot
+        )
 
         let snapshot = AppSnapshot(
             app: .excel,
@@ -163,7 +172,10 @@ final class OfficeResumeCoreTests: XCTestCase {
 
     func testUnsavedArtifactPurgeRemovesUnreferencedFiles() async throws {
         let tempRoot = makeTempDirectory(name: "artifact-purge")
-        let store = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let store = FileSnapshotStore(
+            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            baseDirectoryOverride: tempRoot
+        )
         let unsavedDirectory = try await store.ensureUnsavedDirectory(for: .word)
 
         let artifactURL = unsavedDirectory.appendingPathComponent("artifact.docx")
@@ -232,55 +244,26 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertFalse(expiredGrace.isActive)
     }
 
-    func testEntitlementOverrideLocalModeForcesActive() {
+    func testDebugEntitlementBypassRequiresExplicitFlag() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let state = EntitlementOverrideEvaluator.overrideState(
+        let disabled = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
-            environment: ["OFFICE_RESUME_LOCAL_MODE": "1"]
+            environment: [:]
         )
+        XCTAssertNil(disabled)
 
-        XCTAssertNotNil(state)
-        XCTAssertEqual(state?.isActive, true)
-        XCTAssertEqual(state?.plan, .yearly)
-    }
-
-    func testEntitlementOverrideByDeviceIDFromFile() throws {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let tempRoot = makeTempDirectory(name: "free-pass")
-        let freePassURL = tempRoot.appendingPathComponent("free-pass-v1.json")
-
-        let config = FreePassConfig(
-            localModeEnabled: false,
-            freePassDeviceIDs: ["tester-device"],
-            freePassEmails: []
-        )
-        let payload = try JSONEncoder().encode(config)
-        try payload.write(to: freePassURL)
-
-        let state = EntitlementOverrideEvaluator.overrideState(
+        let enabled = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
-            environment: ["OFFICE_RESUME_DEVICE_ID": "tester-device"],
-            freePassFileURL: freePassURL
+            environment: ["OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS": "1"]
         )
 
-        XCTAssertNotNil(state)
-        XCTAssertEqual(state?.isActive, true)
-        XCTAssertEqual(state?.plan, .yearly)
-    }
-
-    func testEntitlementOverrideByEmailEnvironment() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let state = EntitlementOverrideEvaluator.overrideState(
-            now: now,
-            environment: [
-                "OFFICE_RESUME_USER_EMAIL": "vip@example.com",
-                "OFFICE_RESUME_FREE_PASS_EMAILS": "vip@example.com,other@example.com",
-            ]
-        )
-
-        XCTAssertNotNil(state)
-        XCTAssertEqual(state?.isActive, true)
-        XCTAssertEqual(state?.plan, .yearly)
+#if DEBUG
+        XCTAssertNotNil(enabled)
+        XCTAssertEqual(enabled?.isActive, true)
+        XCTAssertEqual(enabled?.plan, .yearly)
+#else
+        XCTAssertNil(enabled)
+#endif
     }
 
     func testRuntimeConfigurationUsesStoredDirectChannel() {
@@ -294,12 +277,18 @@ final class OfficeResumeCoreTests: XCTestCase {
 
         let channel = RuntimeConfiguration.distributionChannel(userDefaults: defaults, environment: [:])
         XCTAssertEqual(channel, .direct)
-        XCTAssertEqual(RuntimeConfiguration.storageChannel(for: channel), .direct)
+        XCTAssertEqual(
+            RuntimeConfiguration.storageChannel(for: channel),
+            .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier)
+        )
     }
 
     func testForceSaveUntitledPersistsRealArtifactAndIndex() async throws {
         let tempRoot = makeTempDirectory(name: "force-save")
-        let store = FileSnapshotStore(channel: .direct, baseDirectoryOverride: tempRoot)
+        let store = FileSnapshotStore(
+            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            baseDirectoryOverride: tempRoot
+        )
         let executor = MockScriptExecutor { script in
             guard let path = Self.extractPath(fromSaveScript: script) else {
                 return ""
@@ -523,14 +512,10 @@ final class OfficeResumeCoreTests: XCTestCase {
         store: EntitlementFileStore,
         now: @escaping () -> Date
     ) -> TrialEntitlementProvider {
-        let isolatedConfigURL = makeTempDirectory(name: "isolated-free-pass")
-            .appendingPathComponent("free-pass-v1.json")
-
         return TrialEntitlementProvider(
             store: store,
             now: now,
-            overrideEnvironment: [:],
-            overrideFreePassFileURL: isolatedConfigURL
+            overrideEnvironment: [:]
         )
     }
 

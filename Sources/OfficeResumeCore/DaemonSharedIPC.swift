@@ -87,18 +87,8 @@ public enum DaemonSharedIPC {
     }
 
     private static func statusFileURL(fileManager: FileManager) throws -> URL {
-        if let appGroupRoot = fileManager.containerURL(forSecurityApplicationGroupIdentifier: RuntimeConfiguration.appGroupIdentifier) {
-            return appGroupRoot
-                .appendingPathComponent("ipc", isDirectory: true)
-                .appendingPathComponent(statusFileName)
-        }
-
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-
-        return appSupport
-            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+        let root = try RuntimeConfiguration.appGroupOrFallbackRoot(fileManager: fileManager)
+        return root
             .appendingPathComponent("ipc", isDirectory: true)
             .appendingPathComponent(statusFileName)
     }

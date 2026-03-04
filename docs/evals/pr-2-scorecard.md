@@ -11,8 +11,8 @@
 - `bash scripts/eval-ui-guardrails.sh` passed
 - `npm --prefix OfficeResumeBackend test` passed
 - `xcodegen generate` passed
-- `./scripts/package-local-free-pass.sh` passed
-- Local install verified helper + direct processes launch from `~/Applications/OfficeResumeLocal`
+- `./scripts/package-local-dev.sh` passed
+- Local install verified helper + app launch from `/Applications`
 - Shared status file observed at `~/Library/Group Containers/group.com.pragprod.msofficeresume/ipc/daemon-status-v1.json`
 
 ## Remaining Risk

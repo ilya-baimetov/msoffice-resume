@@ -1,27 +1,28 @@
 # Office Resume v1 - Product Requirements Document
 
 ## 1. Problem Statement
-Microsoft Office for Mac does not reliably provide macOS-style Resume behavior across apps and document types. Users lose context after app restarts, crashes, machine reboots, or routine relaunches.
+Microsoft Office for Mac does not reliably preserve full working context on relaunch. Users lose open-document continuity and must reconstruct sessions after app restarts, system restarts, or crashes.
 
-Office Resume restores user continuity by capturing Office state in the background and reopening prior work automatically.
+Office Resume restores continuity by capturing Office state in the background and reopening prior work automatically.
 
 ## 2. Target Users
-- Individual professionals who use Office heavily on macOS
-- Knowledge workers managing multiple documents/presentations/workbooks
-- Users expecting native Resume-style workflow continuity
+- Individual professionals and teams using Office heavily on macOS
+- Knowledge workers managing many Word/Excel/PowerPoint documents
+- Users expecting native macOS Resume-like behavior for Office workflows
 
 ## 3. Product Goals
-1. Restore Office work context automatically on app relaunch.
-2. Mimic native Resume behavior conventions where feasible on macOS.
+1. Restore Office work context automatically on relaunch.
+2. Keep user-visible behavior unified across MAS and Direct channels, except billing.
 3. Provide lightweight menu bar controls with minimal interruption.
 4. Support monetization with a 14-day trial and recurring subscription.
-5. Keep privacy strong: local-only logs and no analytics telemetry in v1.
+5. Keep privacy strong: local-only operational logs and no analytics telemetry.
+6. Ship a standard Direct installer experience using `.pkg` with update behavior.
 
 ## 4. Non-Goals (v1)
 - Full OneNote restoration support
-- Outlook message-level/window object restoration
+- Outlook message-level/window object reconstruction
 - Cloud sync of snapshots across devices
-- Team accounts or cross-channel purchase linking
+- Cross-channel purchase linking
 - Reverse-engineering Apple's private Resume binary format
 
 ## 5. Scope and Support Matrix
@@ -29,19 +30,21 @@ Office Resume restores user continuity by capturing Office state in the backgrou
 - Word document-level capture/restore
 - Excel workbook-level capture/restore
 - PowerPoint presentation-level capture/restore
-- Outlook lifecycle capture + relaunch-only restoration
+- Outlook lifecycle capture + relaunch-only restore
 - Menu bar controls and status/log visibility
 - Login helper daemon for background operation
-- MAS and direct distribution variants
+- MAS and Direct targets with shared runtime behavior
+- Direct distribution via standard `.pkg` installer
 
 ### Out of Scope
 - OneNote automation-based restore (explicitly unsupported in v1)
-- Per-app restore policies (global policy only in v1)
+- Per-app restore policies (global policy only)
+- Client-side production free-pass activation via local files/env overrides
 
 ## 6. Core User Experience
 ### 6.1 Background Behavior
 - App auto-starts at login.
-- Helper tracks Office app launches/quits via `NSWorkspace` and document/window changes via Accessibility notifications (`AXObserver`) as the primary source.
+- Helper tracks Office launches/quits via `NSWorkspace` and document/window changes via `AXObserver` Accessibility notifications.
 - On Office relaunch, restore is attempted automatically.
 
 ### 6.2 Restore Behavior
@@ -52,125 +55,139 @@ Office Resume restores user continuity by capturing Office state in the backgrou
 
 ### 6.3 Menu Bar Controls
 Required actions:
-- `Restore now`
-- `Pause tracking`
-- `Clear snapshot`
+- `Restore Now`
+- `Pause Tracking` / `Resume Tracking`
+- `Advanced > Clear Snapshot`
+- `Advanced > Open Debug Log in Console`
+- `Quit`
 
 Required display:
-- Tracking status
-- Accessibility permission status and remediation guidance
+- Helper connection status
+- Accessibility permission status and remediation action
 - Current entitlement status
-- Recent local restore/log events
-- OneNote marked as unsupported
+- Recent local status/log signals
 
 ## 7. Functional Requirements
 ### FR-1 Lifecycle Capture
-- Capture app launch and quit events for Word/Excel/PowerPoint/Outlook/OneNote.
+- Capture app launch/quit events for Word/Excel/PowerPoint/Outlook/OneNote.
 - Persist minimal event records locally.
 
 ### FR-2 Document/Window Capture (Accessibility-First)
-- Use Accessibility notifications as the primary trigger for open/close/focus/title transitions and infer document/window transitions from those events.
-- Word/Excel/PowerPoint: capture open documents with path/name/saved state using adapter fetch after AX-triggered capture.
-- Outlook: capture basic window metadata only.
-- OneNote: no document capture; show unsupported status.
-- If Accessibility permission is not granted, degrade to lifecycle-only mode with explicit UI warning.
+- Use Accessibility notifications as primary trigger for open/close/focus/title transitions.
+- Word/Excel/PowerPoint: capture open documents with path/name/saved state via adapter fetch after AX-triggered capture.
+- Outlook: capture lifecycle + window metadata only.
+- OneNote: no document capture and no restore.
+- If Accessibility permission is not granted, degrade gracefully with explicit UI status.
 
 ### FR-3 Snapshot Persistence
-- Maintain latest snapshot only per supported Office app.
-- Write to native-like saved-state directories using custom schema:
+- Maintain latest snapshot only per Office app.
+- Use app-group-first saved-state layout with documented schema:
   - `snapshot-v1.json`
   - `events-v1.ndjson`
   - `unsaved-index-v1.json`
   - `unsaved/`
+- Allow dev-only fallback path for unsigned local builds when app-group container is unavailable.
 
 ### FR-4 Untitled Document Handling
-- For Word/Excel/PowerPoint untitled docs, periodically force-save to temp artifacts.
+- For Word/Excel/PowerPoint untitled docs, force-save to temporary artifacts.
 - Track mapping metadata from source doc/session to temp path.
-- Reopen temp artifacts as part of restore flow.
-- Purge artifacts when no longer needed by active/latest snapshot lifecycle.
-- Side effect (untitled becomes saved temp file) is acceptable.
+- Reopen temp artifacts during restore when applicable.
+- Purge artifacts when no longer referenced by latest lifecycle state.
 
 ### FR-5 Restore Execution
-- Auto-run restore on every relaunch for supported apps.
-- Dedupe by comparing currently open docs to snapshot list.
+- Auto-run restore on relaunch for supported apps.
+- Dedupe against currently open docs.
 - Apply one-shot marker per launch instance.
-- Log successes/failures locally.
+- Log per-item success/failure locally.
 
 ### FR-6 Entitlement and Gating
-- 14-day free trial.
+- 14-day trial.
 - Paid plans: `$5/mo` and `$50/yr`.
-- On inactive entitlement: disable monitoring and restore, keep history view read-only.
-- Offline grace: keep paid/trial features active for up to 7 days since last valid check.
+- On inactive entitlement: monitoring/restore disabled, history/log view remains read-only.
+- Offline grace: keep paid/trial features active up to 7 days from last successful validation.
 
-### FR-7 Distribution Variants
+### FR-7 Distribution and Billing
 - `OfficeResumeMAS`: StoreKit 2 subscriptions/trial.
-- `OfficeResumeDirect`: Stripe subscriptions/trial + email magic link + Cloudflare entitlement backend.
-- No purchase linking between channels in v1.
+- `OfficeResumeDirect`: Stripe subscriptions/trial + email magic-link + Cloudflare entitlement backend.
+- Runtime behavior parity across channels except billing provider internals.
+
+### FR-8 Free-Pass Security
+- Free-pass for owner/internal users is granted server-side only in Direct backend.
+- Free-pass decision requires verified session identity and backend allowlist.
+- Production app must not grant free-pass from local files/env toggles.
+
+### FR-9 Direct Installer Experience
+- Direct release artifact is a standard `.pkg` installer.
+- Installing newer `.pkg` updates existing install cleanly.
+- Installer should restart/launch the app cleanly after update.
 
 ## 8. Non-Functional Requirements
 - macOS 14+ only; Apple Silicon only.
-- Menu bar app and helper should remain responsive under bursty Accessibility event traffic.
-- All logs stored locally; no remote analytics.
-- Errors should degrade gracefully and keep app operational.
+- Menu bar app and helper remain responsive under bursty Accessibility events.
+- Local logs only; no analytics telemetry.
+- Errors degrade gracefully and preserve core operation where possible.
 
 ## 9. Privacy and Data Handling
 - Store only operational state needed for restore.
 - No remote event analytics.
-- Do not upload document content.
-- Local files may include temp force-saved documents in user storage paths.
+- Do not upload document contents.
+- Local temp artifacts may include force-saved Office files.
 
 ## 10. Monetization Requirements
 ### App Store (MAS)
-- StoreKit 2 subscription group with two products:
+- StoreKit 2 subscription group with:
   - monthly (`$5`)
   - yearly (`$50`)
 - Both configured with 14-day introductory trial.
 
 ### Direct Distribution
-- Stripe products and prices mirroring MAS plans.
-- Trial period of 14 days.
+- Stripe products mirror MAS pricing.
+- 14-day trial behavior equivalent to MAS policy intent.
 - Email magic-link auth for entitlement retrieval.
 - Entitlement backend on Cloudflare Worker with D1/KV.
+- Backend free-pass allowlist via verified session identity.
 
 ## 11. Success Metrics
 - >= 95% successful restore attempts for saved docs in W/E/P under supported conditions.
-- <= 1% duplicate-open incidents after restore dedupe logic.
-- < 5% crash/error rate in helper process over internal test runs.
-- Trial-to-paid conversion and churn tracked only through billing providers, not behavioral analytics.
+- <= 1% duplicate-open incidents after dedupe.
+- < 5% helper crash/error rate in internal test runs.
+- Free-pass bypass resistance improved by server-authoritative enforcement.
 
 ## 12. Launch Criteria (v1)
-1. All required menu actions implemented and functional.
+1. Required menu actions implemented and functional.
 2. W/E/P document-level restore works for saved docs.
 3. Untitled force-save and restore lifecycle implemented.
-4. Accessibility-first capture works when permission is granted, and degraded mode behavior is clear when denied.
-5. Outlook limited relaunch behavior works.
-6. OneNote unsupported state clearly exposed.
-7. Entitlement gating and offline grace validated for MAS and direct flows.
-8. Local-only logging/privacy constraints validated.
+4. Accessibility-first capture works when granted; degraded behavior is clear when denied.
+5. Outlook relaunch-only behavior works.
+6. OneNote remains unsupported (no dedicated menu row).
+7. Entitlement gating and offline grace validated for MAS and Direct.
+8. Direct `.pkg` installer installs and upgrades cleanly.
+9. Production Direct flow does not accept local free-pass bypass inputs.
+10. Copilot review workflow documented and PR metadata captured.
 
 ## 13. Risks and Mitigations
-### Risk 1: MAS Apple Events/App Review constraints
-- Impact: reduced cross-app automation permissions.
-- Mitigation: direct channel fallback and explicit MAS review documentation.
+### Risk 1: MAS automation review constraints
+- Impact: reduced automation permissions.
+- Mitigation: explicit App Review risk documentation and Direct fallback channel.
 
-### Risk 2: Office scripting inconsistencies across versions
+### Risk 2: Office scripting inconsistencies
 - Impact: adapter failures or reduced restore fidelity.
-- Mitigation: per-app adapter isolation, defensive parsing, graceful partial restore.
+- Mitigation: per-app adapter isolation, defensive parsing, partial-restore tolerance.
 
 ### Risk 3: Untitled force-save side effects
-- Impact: user surprise due to file title/path changes.
-- Mitigation: clear documentation and recoverability-first behavior.
+- Impact: user surprise from changed title/path.
+- Mitigation: clear docs and recoverability-first behavior.
 
-### Risk 4: Billing complexity across two channels
-- Impact: increased maintenance burden.
-- Mitigation: shared entitlement abstraction, channel-specific provider implementations.
+### Risk 4: Direct entitlement security bypass attempts
+- Impact: unpaid users enabling premium features.
+- Mitigation: remove production local bypasses; enforce backend-authoritative free-pass.
 
-### Risk 5: Accessibility permission adoption
-- Impact: users may decline Accessibility access, reducing capture fidelity.
-- Mitigation: clear first-run guidance, visible permission status in menu, graceful degraded mode fallback.
+### Risk 5: Installer/update regressions
+- Impact: failed app upgrades or orphan processes.
+- Mitigation: pkg update tests, postinstall process management checks.
 
 ## 14. Open Questions for Future Versions (Not Blocking v1)
-- OneNote support feasibility via other automation channels.
+- OneNote support feasibility via alternative APIs.
 - Optional per-app restore policies.
 - Cross-channel entitlement linking.
-- Optional secure encryption for temp artifacts.
+- Additional secure device binding for Direct entitlement.

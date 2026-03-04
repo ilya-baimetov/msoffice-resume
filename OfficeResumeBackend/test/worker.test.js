@@ -23,6 +23,29 @@ async function stripeSignature(secret, timestamp, payload) {
   return hex(digest);
 }
 
+test("magic link tokens use 256-bit hex format", async () => {
+  const store = new InMemoryEntitlementStore();
+  const app = createApp(store);
+
+  const firstLinkResponse = await app(new Request("https://example.com/auth/request-link", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "token1@example.com" }),
+  }));
+  const secondLinkResponse = await app(new Request("https://example.com/auth/request-link", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "token2@example.com" }),
+  }));
+
+  const firstLinkBody = await firstLinkResponse.json();
+  const secondLinkBody = await secondLinkResponse.json();
+
+  assert.match(firstLinkBody.token, /^[a-f0-9]{64}$/);
+  assert.match(secondLinkBody.token, /^[a-f0-9]{64}$/);
+  assert.notEqual(firstLinkBody.token, secondLinkBody.token);
+});
+
 test("auth flow returns trial entitlement by default", async () => {
   const store = new InMemoryEntitlementStore();
   const app = createApp(store);

@@ -94,6 +94,7 @@ require_file "specs/menu-ui.md" "Menu UI component spec"
 require_file "specs/backend-worker.md" "Backend worker component spec"
 require_file "docs/vibe-coding-methodology.md" "Vibe coding methodology"
 require_file "docs/eval-scorecard-template.md" "Eval scorecard template"
+require_file ".github/copilot-instructions.md" "Copilot review instructions"
 
 echo
 echo "== Canonical Order Checks =="
@@ -134,6 +135,8 @@ require_pattern "AGENTS.md" "specs/menu-ui\\.md" "AGENTS references menu compone
 require_pattern "AGENTS.md" "Sources/OfficeResumeDirect/" "AGENTS maps menu spec to source"
 require_pattern "AGENTS.md" "specs/backend-worker\\.md" "AGENTS references backend component spec"
 require_pattern "AGENTS.md" "OfficeResumeBackend/" "AGENTS maps backend spec to source"
+require_pattern "AGENTS.md" "Copilot Review Expectations" "AGENTS defines Copilot review expectations"
+require_pattern ".github/pull_request_template.md" "Copilot review URL:" "PR template includes Copilot review URL field"
 
 echo
 echo "== Bundle Prefix Drift Checks =="

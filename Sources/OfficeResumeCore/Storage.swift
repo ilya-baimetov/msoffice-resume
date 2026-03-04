@@ -1,8 +1,7 @@
 import Foundation
 
 public enum StorageChannel: Equatable {
-    case direct
-    case mas(appGroupIdentifier: String)
+    case appGroupFirst(appGroupIdentifier: String)
 }
 
 public struct UnsavedArtifactRecord: Codable, Hashable {
@@ -70,13 +69,20 @@ public actor FileSnapshotStore: SnapshotStore {
     private let channel: StorageChannel
     private let baseDirectoryOverride: URL?
     private let fileManager: FileManager
+    private let environment: [String: String]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    public init(channel: StorageChannel, fileManager: FileManager = .default, baseDirectoryOverride: URL? = nil) {
+    public init(
+        channel: StorageChannel,
+        fileManager: FileManager = .default,
+        baseDirectoryOverride: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.channel = channel
         self.baseDirectoryOverride = baseDirectoryOverride
         self.fileManager = fileManager
+        self.environment = environment
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -257,20 +263,14 @@ public actor FileSnapshotStore: SnapshotStore {
             base = baseDirectoryOverride
         } else {
             switch channel {
-            case .direct:
-                base = fileManager.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Library", isDirectory: true)
-                    .appendingPathComponent("Saved Application State", isDirectory: true)
-            case let .mas(appGroupIdentifier):
-                if let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-                    base = container.appendingPathComponent("Saved Application State", isDirectory: true)
-                } else {
-                    base = fileManager.homeDirectoryForCurrentUser
-                        .appendingPathComponent("Library", isDirectory: true)
-                        .appendingPathComponent("Application Support", isDirectory: true)
-                        .appendingPathComponent(appGroupIdentifier, isDirectory: true)
-                        .appendingPathComponent("Saved Application State", isDirectory: true)
-                }
+            case let .appGroupFirst(appGroupIdentifier):
+                let root = try RuntimeConfiguration.appGroupOrFallbackRoot(
+                    appGroupIdentifier: appGroupIdentifier,
+                    bundlePrefix: RuntimeConfiguration.bundlePrefix,
+                    fileManager: fileManager,
+                    environment: environment
+                )
+                base = root.appendingPathComponent("Saved Application State", isDirectory: true)
             }
         }
 

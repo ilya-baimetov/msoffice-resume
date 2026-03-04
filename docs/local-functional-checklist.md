@@ -1,34 +1,38 @@
 # Office Resume v1 Local Functional Checklist
 
-Use this checklist to validate the local free-pass build end-to-end.
+Use this checklist to validate local behavior end-to-end.
 
 ## Preconditions
 
-- Install local build:
-  - `./scripts/package-local-free-pass.sh`
-  - `./dist/local-free-pass/install-local-free-pass.sh`
-- Confirm free-pass file exists:
-  - `~/Library/Application Support/com.pragprod.msofficeresume/entitlements/free-pass-v1.json`
-- Ensure helper + app are running.
+1. Build and install local dev package:
+- `./scripts/package-local-dev.sh`
+- `sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg`
 
-## Automated Baseline (already executed)
+2. Ensure apps exist:
+- `/Applications/OfficeResume.app`
+- `/Applications/OfficeResumeHelper.app`
+
+3. Ensure menu app + helper are running.
+
+## Automated Baseline
 
 - `xcodebuild ... OfficeResumeMAS ... build test`: pass
 - `xcodebuild ... OfficeResumeDirect ... build test`: pass
-- `cd OfficeResumeBackend && npm test`: pass
+- `xcodebuild ... OfficeResumeHelper ... build`: pass
+- `cd OfficeResumeBackend && npm run lint && npm test`: pass
 
 ## Manual Product Validation
 
 1. Menu bar and helper health
-- Open `Office Resume` from menu bar.
-- Expected: status shows `Helper Connected` and `Entitlement: Active`.
+- Open menu.
+- Expected: no persistent helper-connection errors; actions enabled when entitlement is active.
 
 2. Accessibility permission status and recovery
-- Remove `Office Resume` from macOS Accessibility list (System Settings -> Privacy & Security -> Accessibility).
-- Relaunch `Office Resume`.
-- Expected: menu shows `Accessibility: Required` and offers `Open Accessibility Settings`.
-- Re-grant Accessibility, then click `Refresh`.
-- Expected: status returns to `Accessibility: Granted`.
+- Remove Office Resume/Helper from macOS Accessibility list.
+- Relaunch Office Resume.
+- Expected: menu shows `Accessibility: click to fix`.
+- Click to open Accessibility settings and re-grant permission.
+- Expected: menu updates to `Accessibility: OK`.
 
 3. Word restore (saved docs)
 - Launch Word.
@@ -46,40 +50,44 @@ Use this checklist to validate the local free-pass build end-to-end.
 - Expected: missing presentations auto-open exactly once.
 
 6. Duplicate guard
-- Before auto-restore completes, manually open one of the previous docs.
-- Expected: app opens only remaining missing docs, no duplicates.
+- Before auto-restore completes, manually open one prior document.
+- Expected: only remaining missing docs open; no duplicates.
 
 7. Pause tracking
-- Toggle `Pause tracking` on.
+- Toggle `Pause Tracking` on.
 - Open/close docs in Word.
 - Expected: snapshot timestamps stop changing while paused.
 
 8. Clear snapshot
-- Click `Clear snapshot`.
-- Relaunch a tested Office app.
-- Expected: no restore occurs until new state is captured.
+- Click `Advanced > Clear Snapshot`.
+- Relaunch tested Office app.
+- Expected: no restore until a new snapshot is captured.
 
 9. Outlook limited mode
 - Launch and quit Outlook.
 - Relaunch Outlook.
-- Expected: lifecycle logging works; no unreliable item/window reconstruction attempted.
+- Expected: lifecycle behavior works; no item/window reconstruction attempted.
 
-10. OneNote unsupported
+10. OneNote UI behavior
 - Open menu UI.
-- Expected: OneNote listed as unsupported.
+- Expected: no dedicated OneNote unsupported row in the menu.
 
 ## Diagnostics
 
 Inspect local state/log files:
 
-- Word snapshot:
-  - `~/Library/Saved Application State/com.microsoft.Word.savedState/OfficeResume/snapshot-v1.json`
-- Word events:
-  - `~/Library/Saved Application State/com.microsoft.Word.savedState/OfficeResume/events-v1.ndjson`
-- Equivalent files exist for Excel/PowerPoint/Outlook bundle IDs.
+- Primary (app-group) root:
+  - `~/Library/Group Containers/group.com.pragprod.msofficeresume/Saved Application State/`
+- Dev fallback root (unsigned local runs):
+  - `~/Library/Application Support/com.pragprod.msofficeresume/Saved Application State/`
+
+Example Word files under either root:
+
+- `com.microsoft.Word.savedState/OfficeResume/snapshot-v1.json`
+- `com.microsoft.Word.savedState/OfficeResume/events-v1.ndjson`
 
 ## Pass Criteria
 
-- All automated baseline checks pass.
+- Automated baseline checks pass.
 - Manual checks 1-10 pass without crash/hang.
 - No duplicate restores observed in Word/Excel/PowerPoint.

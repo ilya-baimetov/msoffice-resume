@@ -13,6 +13,12 @@
   - [ ] Pass (no dimension < 1 and >= 80% total)
   - [ ] Fail (blocked; do not merge)
 
+## Copilot Review (Required)
+- [ ] Copilot review requested (or auto-requested by branch/ruleset)
+- Copilot review URL:
+- Copilot high/medium findings summary:
+- Copilot disposition (fixed or explicitly accepted with reason):
+
 ## Docs Consistency Check
 - [ ] Ran `./scripts/eval-docs-consistency.sh`
 - Result:
@@ -27,4 +33,3 @@
 1.
 2.
 3.
-
