@@ -77,8 +77,13 @@ Worker env baseline:
 - `MAGIC_LINK_SIGNING_SECRET`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_MONTHLY`
+- `STRIPE_PRICE_YEARLY`
 - `FREE_PASS_EMAILS` (optional)
 - `STRIPE_WEBHOOK_TOLERANCE_SECONDS` (optional)
+
+Checked-in free-pass allowlist:
+- `OfficeResumeBackend/src/free-pass-emails.js`
 
 ## 5. CI and Review Gates
 
@@ -109,4 +114,5 @@ Review model:
 7. Postinstall behavior restarts/relaunches app cleanly.
 8. Free-pass allowlist works for internal accounts.
 9. Non-allowlisted accounts require trial/subscription entitlement.
-10. No remote analytics/telemetry introduced.
+10. Direct checkout uses Worker-hosted pricing plus Stripe Checkout Sessions after verified sign-in.
+11. No remote analytics/telemetry introduced.

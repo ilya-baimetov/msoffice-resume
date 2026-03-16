@@ -1,7 +1,8 @@
-# msoffice-resume
+# Office Resume
 
-Office Resume planning and implementation docs:
+Office Resume is a macOS menu bar app plus helper that restores Microsoft Office sessions across relaunches.
 
+Canonical docs:
 - `AGENTS.md`
 - `PRD.md`
 - `spec.md`
@@ -12,8 +13,7 @@ Office Resume planning and implementation docs:
 - `specs/backend-worker.md`
 - `prompt.md`
 
-## Docs/Eval Utilities
-
+## Docs and Eval Utilities
 - Docs consistency checker: `./scripts/eval-docs-consistency.sh`
 - UI guardrails checker: `./scripts/eval-ui-guardrails.sh`
 - Methodology/docs:
@@ -22,9 +22,10 @@ Office Resume planning and implementation docs:
   - `docs/local-functional-checklist.md`
   - `docs/release-hardening.md`
 
-## Local Dev Install (No Apple Developer Account Required)
+## Local Debug Build and Install
+No Apple Developer account is required for local Debug builds.
 
-Build an unsigned local dev installer package:
+Build a local Debug installer package:
 
 ```bash
 ./scripts/package-local-dev.sh
@@ -37,38 +38,33 @@ sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
 ```
 
 Installed paths:
-
 - `/Applications/Office Resume.app`
-- Embedded helper login item: `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
+- `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
 Notes:
-
-- Local dev package is convenience-only and non-canonical for public distribution.
+- Local Debug package is convenience-only and non-canonical for public distribution.
 - Canonical Direct distribution artifact is the pkg produced by `./scripts/release-direct.sh`.
-- macOS permissions are runtime-gated: Accessibility prompt appears on first launch; Apple Events prompts appear when Office automation is first used.
+- Runtime permissions are requested after install when the app/helper actually needs them.
+- Debug-only entitlement bypass remains available only when explicitly enabled at runtime in a Debug build.
 
 ## Direct Release Packaging (.pkg)
-
-Build release artifacts:
+Build Direct release artifacts:
 
 ```bash
 ./scripts/release-direct.sh
 ```
 
 Outputs:
-
 - `dist/OfficeResume-direct-unsigned.pkg`
 - `dist/release-direct/` (staged app payload)
 
 Optional signing/notarization env vars:
-
 - `DEVELOPER_ID_APPLICATION`
 - `DEVELOPER_ID_INSTALLER`
 - `NOTARYTOOL_PROFILE`
 
 ## Build and Test
-
-Generate project (if needed):
+Generate project if needed:
 
 ```bash
 xcodegen generate
@@ -91,24 +87,62 @@ npm run lint
 npm test
 ```
 
-## CI
+## Build Modes
+### Debug local build
+- Works without production backend if you use Debug-only local shortcuts.
+- Suitable for local feature testing and Accessibility/restore verification.
 
+### ReleaseDirect
+- Intended for website distribution.
+- Uses production Direct backend and signed/notarized `.pkg`.
+- No client-side local bypasses are accepted.
+
+### ReleaseMAS
+- Intended for Mac App Store distribution.
+- Uses StoreKit 2 and App Store Connect configuration.
+
+## Direct Backend Configuration
+Direct production build expects a configured backend base URL and callback scheme.
+
+Recommended configuration sources:
+- Info.plist/build settings for Release builds
+- environment overrides only for local Debug workflows
+
+See `services-setup.md` for the exact service setup and required env/build settings.
+
+Direct billing flow:
+- sign in by email magic link first
+- if not yet paid, `Account…` opens a Worker-hosted pricing page and then Stripe Checkout
+- if already paid, `Account…` opens Stripe Billing Portal
+
+## Friends-and-Family Free Pass
+Direct free-pass is backend-authoritative.
+
+Sources of allowlisted emails:
+- checked-in hard-coded backend list for real-world testing
+- optional `FREE_PASS_EMAILS` environment variable to extend it
+
+Checked-in file:
+- `OfficeResumeBackend/src/free-pass-emails.js`
+
+The client app does not grant free-pass locally.
+
+## CI
 Workflow: `.github/workflows/ci.yml`
 
 Primary jobs:
-
 - `docs-guardrails`
 - `ui-guardrails`
-- `pr-scorecard-guardrail` (PR body + Copilot metadata)
+- `pr-scorecard-guardrail`
 - `spec-drift-guardrails`
-- `build-test-mas` (includes `xcodebuild analyze`)
-- `build-test-direct` (includes `xcodebuild analyze`)
-- `backend-tests` (includes backend lint + tests)
+- `build-test-mas`
+- `build-test-direct`
+- `backend-tests`
 
-## Debug-Only Entitlement Bypass (Optional)
+## Debug-Only Entitlement Bypass
+For local Debug builds only, an explicit bypass can be enabled from the Debug account UI/runtime opt-in path.
 
-For local debug builds only, an explicit bypass can be enabled with:
-
-- `OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS=1`
-
-This bypass is non-default and not part of production release behavior.
+It is:
+- non-default
+- Debug-only
+- not part of Release behavior

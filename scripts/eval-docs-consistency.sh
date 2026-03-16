@@ -123,6 +123,9 @@ require_pattern "spec.md" "^## 6\\. Event Capture Model" "spec has event capture
 require_pattern "spec.md" "^## 7\\. Office Adapter Behavior" "spec has office adapter behavior"
 require_pattern "spec.md" "^## 13\\. XPC Contract Details" "spec has XPC contract"
 require_pattern "spec.md" "^## 16\\. Test Matrix" "spec has test matrix"
+require_pattern "spec.md" "Checkout Session|Checkout Sessions" "spec references Direct Checkout Sessions"
+require_pattern "PRD.md" "verified sign-in" "PRD requires verified sign-in for Direct billing"
+require_pattern "services-setup.md" "Worker-hosted pricing page|Worker-hosted pricing" "services setup documents Worker-hosted pricing"
 
 echo
 echo "== Component Mapping Checks =="
@@ -149,6 +152,16 @@ if ! search_in_repo_with_glob "com\\.pragprod\\.msofficeresume" "*.md"; then
 else
   pass "Current bundle prefix appears in markdown docs"
 fi
+
+echo
+echo "== Direct Billing Drift Checks =="
+
+forbid_pattern "*.md" "STRIPE_SUBSCRIBE_URL" "No stale STRIPE_SUBSCRIBE_URL references in markdown docs"
+forbid_pattern "*.md" "Payment Link|Payment Links|shareable payment link" "No Payment Link terminology in markdown docs"
+require_pattern "specs/backend-worker.md" "GET /billing/entry" "Backend spec documents billing entry endpoint"
+require_pattern "specs/backend-worker.md" "GET /billing/pricing" "Backend spec documents pricing page endpoint"
+require_pattern "specs/backend-worker.md" "POST /billing/checkout" "Backend spec documents checkout endpoint"
+require_pattern "specs/menu-ui.md" "Choose Plan" "Menu UI spec documents Choose Plan action"
 
 echo
 echo "== Summary =="

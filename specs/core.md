@@ -1,7 +1,7 @@
 # Core Module Spec (`Sources/OfficeResumeCore`)
 
 ## Scope
-Shared business logic and contracts used by helper and menu UI.
+Shared business logic and contracts used by helper and menu/account UI.
 
 ## Owned Files
 - `DomainModels.swift`
@@ -11,6 +11,7 @@ Shared business logic and contracts used by helper and menu UI.
 - `OfficeAdapters.swift`
 - `Entitlements.swift`
 - `DaemonXPCBridge.swift`
+- `DaemonSharedIPC.swift`
 - `HelperLauncher.swift`
 - `RuntimeConfiguration.swift`
 - `OfficeBundleRegistry.swift`
@@ -20,10 +21,18 @@ Shared business logic and contracts used by helper and menu UI.
 ## Responsibilities
 1. Define stable shared models and protocol contracts.
 2. Persist snapshots/events/artifact index with unified app-group-first storage policy.
-3. Compute restore plans with dedupe + one-shot markers.
-4. Implement Office adapter scripting boundaries.
-5. Implement entitlement abstraction + channel-specific providers.
-6. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
+3. Persist shared status, restore markers, entitlements, and debug logs under the same root policy.
+4. Compute restore plans with dedupe + one-shot markers.
+5. Implement Office adapter scripting boundaries.
+6. Implement entitlement abstraction plus channel-specific providers.
+7. Implement shared account/billing abstractions and Direct session persistence.
+8. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
+
+## Model Requirements
+- `DocumentSnapshot.canonicalPath` is optional.
+- Decoding must transparently normalize prior `""`/placeholder path values to `nil`.
+- `AppSnapshot` does not embed restore-attempt state.
+- Restore markers live in dedicated storage.
 
 ## Adapter Requirements
 - W/E/P fetch document list using AppleScript.
@@ -32,26 +41,33 @@ Shared business logic and contracts used by helper and menu UI.
 - Outlook restore is activate/relaunch-only; no message-level reconstruction.
 - OneNote adapter remains unsupported.
 
-## Entitlement Requirements
+## Entitlement and Account Requirements
 - Provide `StoreKitEntitlementProvider` and `StripeEntitlementProvider` behind `EntitlementProvider`.
+- Provide shared account providers for MAS and Direct.
 - Cache and apply 7-day offline grace behavior.
-- Keep free-pass logic backend-authoritative in production Direct path.
-- Any local free-pass bypass must be debug-only, explicit, and non-default.
+- Direct production path must use verified backend auth and Keychain-backed session handling.
+- Shared account state must surface an optional billing action (`subscribe` or `manageSubscription`) instead of assuming one subscription-management URL.
+- Direct billing action resolution must come from the backend so paid, unpaid, and free-pass states remain server-authoritative.
+- Any local bypass must be debug-only, compile-time gated, explicit, and non-default.
+- Hard-coded friends-and-family free-pass emails belong on the backend side only.
 
 ## Channel Unification Requirements
 - Keep non-billing behavior unified across MAS and Direct.
 - Keep runtime name/process behavior aligned across app targets.
-- Do not add channel-specific storage, restore, or UI logic in core.
+- Do not add channel-specific storage, restore, or UI behavior in core.
 
 ## Forbidden Changes
 - Do not introduce remote telemetry.
 - Do not add OneNote restore behavior.
 - Do not reintroduce polling-only restore/capture paths.
 - Do not re-enable production local free-pass override paths.
+- Do not store production Direct sessions only in environment variables.
 
 ## Component Acceptance Checks
 - `OfficeResumeCoreTests` passes.
 - Storage root selection is app-group-first and deterministic.
+- Shared auxiliary files (status, restore markers, logs, entitlements) use the unified root.
 - Unsaved force-save path stores only artifacts that actually exist.
+- Optional-path migration is backward-compatible with old snapshot data.
 - XPC status DTO changes are reflected in menu UI consumers.
 - Shared IPC status and command fallback works across process boundary.

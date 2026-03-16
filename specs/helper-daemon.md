@@ -15,17 +15,19 @@ Background runtime that captures Office state and performs restore actions.
 5. Trigger startup restore pass for already-running Office apps when helper starts.
 6. Expose helper control/status over XPC service with shared IPC fallback.
 7. Enforce entitlement and pause gating on capture/restore paths.
-8. Keep behavior channel-neutral except entitlement provider implementation selected by channel.
+8. Keep behavior channel-neutral except entitlement/account provider implementation selected by channel.
 
 ## Required Runtime Behavior
 - On helper startup:
   - refresh entitlement state
   - run startup restore pass for currently running supported Office apps
   - capture startup state for currently running supported Office apps
+  - publish helper-running status
 - On app launch:
   - append lifecycle event
   - attempt restore if eligible
   - capture state if monitoring is active
+  - attach AX observer when trusted
 - On AX event:
   - debounce
   - skip if paused or entitlement cannot monitor
@@ -39,10 +41,16 @@ Background runtime that captures Office state and performs restore actions.
 - Keep helper fully headless (no visible helper UI windows).
 - Helper bundle is shipped as embedded login item under the main app (`Contents/Library/LoginItems/OfficeResumeHelper.app`), not as a top-level `/Applications` app.
 - Surface Accessibility trust state into daemon status.
-- Refresh Accessibility trust state periodically (~2 seconds) and publish status updates without requiring lifecycle events.
+- Refresh Accessibility trust state while helper runs to catch runtime permission changes.
 - Register and host XPC listener at startup.
 - Publish daemon status JSON to shared IPC path.
-- Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`) and route to controller handlers.
+- Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`, `refresh-entitlement`, `prompt-accessibility`, `quit-helper`) and route to controller handlers.
+- Prompt Accessibility from the helper process when remediation is requested.
+
+## Reliability Requirements
+- Helper shutdown/restart pathways must not block the menu UI thread.
+- Startup retries must be bounded.
+- Helper status must be cleared/published correctly on start, shutdown, and permission transitions.
 
 ## Forbidden Changes
 - Do not perform UI logic in helper.
@@ -56,3 +64,4 @@ Background runtime that captures Office state and performs restore actions.
 - Inactive entitlement disables capture and restore triggers.
 - AX observer attach/detach behaves correctly across Office relaunches.
 - Toggling Accessibility permission while helper is running updates published status quickly.
+- Quit command cleanly terminates the helper.

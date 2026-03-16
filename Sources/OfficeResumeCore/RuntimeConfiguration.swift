@@ -15,9 +15,15 @@ public enum RuntimeConfiguration {
     private static let channelKey = "\(bundlePrefix).distribution-channel"
     private static let localStorageFallbackKey = "OFFICE_RESUME_ALLOW_LOCAL_STORAGE_FALLBACK"
     private static let debugEntitlementBypassKey = "OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS"
+    private static let debugEntitlementBypassDefaultsKey = "\(bundlePrefix).debug-entitlement-bypass-enabled"
+    private static let directBackendBaseURLEnvKey = "OFFICE_RESUME_DIRECT_BACKEND_BASE_URL"
 
     public static func sharedDefaults() -> UserDefaults? {
         UserDefaults(suiteName: appGroupIdentifier)
+    }
+
+    public static func sharedDefaultsOrStandard() -> UserDefaults {
+        sharedDefaults() ?? .standard
     }
 
     public static func setDistributionChannel(_ channel: DistributionChannel, userDefaults: UserDefaults? = sharedDefaults()) {
@@ -95,14 +101,52 @@ public enum RuntimeConfiguration {
     }
 
     public static func isDebugEntitlementBypassEnabled(
+        userDefaults: UserDefaults = sharedDefaultsOrStandard(),
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
 #if DEBUG
-        return isEnabled(environment[debugEntitlementBypassKey])
+        if isEnabled(environment[debugEntitlementBypassKey]) {
+            return true
+        }
+        return userDefaults.bool(forKey: debugEntitlementBypassDefaultsKey)
 #else
+        _ = userDefaults
         _ = environment
         return false
 #endif
+    }
+
+    public static func setDebugEntitlementBypassEnabled(
+        _ enabled: Bool,
+        userDefaults: UserDefaults = sharedDefaultsOrStandard()
+    ) {
+#if DEBUG
+        userDefaults.set(enabled, forKey: debugEntitlementBypassDefaultsKey)
+        userDefaults.synchronize()
+#else
+        _ = enabled
+        _ = userDefaults
+#endif
+    }
+
+    public static func directBackendBaseURL(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        if let raw = environment[directBackendBaseURLEnvKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           let url = URL(string: raw) {
+            return url
+        }
+
+        if let raw = bundle.object(forInfoDictionaryKey: "OfficeResumeDirectBackendBaseURL") as? String {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, let url = URL(string: trimmed) {
+                return url
+            }
+        }
+
+        return nil
     }
 
     private static func developmentFallbackRoot(fileManager: FileManager, bundlePrefix: String) throws -> URL {

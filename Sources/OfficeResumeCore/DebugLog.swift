@@ -91,12 +91,8 @@ public enum DebugLog {
     }
 
     private static func logFileURL(fileManager: FileManager = .default) throws -> URL {
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-
-        let directory = appSupport
-            .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+        let directory = try RuntimeConfiguration
+            .appGroupOrFallbackRoot(fileManager: fileManager)
             .appendingPathComponent("logs", isDirectory: true)
 
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

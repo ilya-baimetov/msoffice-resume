@@ -21,11 +21,8 @@ public actor FileRestoreMarkerStore: RestoreMarkerStore {
         if let markerFileURL {
             self.markerFileURL = markerFileURL
         } else {
-            guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-                throw CocoaError(.fileNoSuchFile)
-            }
-            let directory = appSupport
-                .appendingPathComponent("com.pragprod.msofficeresume", isDirectory: true)
+            let directory = try RuntimeConfiguration
+                .appGroupOrFallbackRoot(fileManager: fileManager)
                 .appendingPathComponent("restore", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             self.markerFileURL = directory.appendingPathComponent("restore-markers-v1.json")
@@ -135,16 +132,14 @@ public actor RestoreEngine {
     ) -> [DocumentSnapshot] {
         let openPaths = Set(
             currentlyOpenDocuments
-                .map(\.canonicalPath)
-                .map(normalizedCanonicalPath)
-                .filter { !$0.isEmpty }
+                .compactMap(\.canonicalPath)
+                .compactMap(normalizedCanonicalPath)
         )
         var seen: Set<String> = []
         var output: [DocumentSnapshot] = []
 
         for doc in snapshotDocuments {
-            let normalizedPath = normalizedCanonicalPath(doc.canonicalPath)
-            guard !normalizedPath.isEmpty else {
+            guard let normalizedPath = normalizedCanonicalPath(doc.canonicalPath) else {
                 continue
             }
             guard !openPaths.contains(normalizedPath) else {
@@ -167,11 +162,19 @@ public actor RestoreEngine {
         return output
     }
 
-    private func normalizedCanonicalPath(_ value: String) -> String {
+    private func normalizedCanonicalPath(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
         let lowered = trimmed.lowercased()
         if lowered == "missing value" || lowered == "missing" || lowered == "null" || lowered == "(null)" || lowered == "<null>" {
-            return ""
+            return nil
         }
         return trimmed
     }

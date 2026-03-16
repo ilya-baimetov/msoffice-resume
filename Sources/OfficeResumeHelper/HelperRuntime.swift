@@ -368,6 +368,10 @@ final class HelperDaemonController {
         _ = await clearSnapshot(app: app)
     }
 
+    func handleCommandRefreshEntitlement() async {
+        await refreshEntitlementStatus()
+    }
+
     func handleAccessibilityEvent(app: OfficeApp, event: String, pid: pid_t) {
         guard app != .onenote else {
             return
@@ -526,8 +530,7 @@ final class HelperDaemonController {
                 launchInstanceID: launchID,
                 capturedAt: Date(),
                 documents: plan.documentsToOpen,
-                windowsMeta: [],
-                restoreAttemptedForLaunch: false
+                windowsMeta: []
             )
 
             let restoreResult = try await adapter.restore(snapshot: restoreSnapshot)
@@ -618,14 +621,13 @@ final class HelperDaemonController {
             if OfficeBundleRegistry.documentRestoreApps.contains(app) {
                 let artifacts = try await adapter.forceSaveUntitled(state: snapshot)
                 if !artifacts.isEmpty {
-                    let persistedDocs = snapshot.documents.filter { $0.isSaved && !$0.canonicalPath.isEmpty }
+                    let persistedDocs = snapshot.documents.filter { $0.isSaved && $0.canonicalPath != nil }
                     snapshot = AppSnapshot(
                         app: snapshot.app,
                         launchInstanceID: snapshot.launchInstanceID,
                         capturedAt: snapshot.capturedAt,
                         documents: dedupeDocuments(persistedDocs + artifacts),
-                        windowsMeta: snapshot.windowsMeta,
-                        restoreAttemptedForLaunch: snapshot.restoreAttemptedForLaunch
+                        windowsMeta: snapshot.windowsMeta
                     )
                 }
             }
@@ -648,7 +650,7 @@ final class HelperDaemonController {
             }
 
             if OfficeBundleRegistry.documentRestoreApps.contains(app) {
-                let referenced = Set(snapshot.documents.map(\.canonicalPath))
+                let referenced = Set(snapshot.documents.compactMap(\.canonicalPath))
                 try await snapshotStore.purgeUnreferencedArtifacts(for: app, referencedPaths: referenced)
             }
 
@@ -850,8 +852,7 @@ final class HelperDaemonController {
         var output: [DocumentSnapshot] = []
 
         for doc in documents {
-            let normalizedPath = normalizedCanonicalPath(doc.canonicalPath)
-            guard !normalizedPath.isEmpty else {
+            guard let normalizedPath = normalizedCanonicalPath(doc.canonicalPath) else {
                 continue
             }
             if seen.insert(normalizedPath).inserted {
@@ -871,11 +872,19 @@ final class HelperDaemonController {
         return output
     }
 
-    private func normalizedCanonicalPath(_ value: String) -> String {
+    private func normalizedCanonicalPath(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
         let lowered = trimmed.lowercased()
         if lowered == "missing value" || lowered == "missing" || lowered == "null" || lowered == "(null)" || lowered == "<null>" {
-            return ""
+            return nil
         }
         return trimmed
     }
@@ -1044,7 +1053,44 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        commandObservers = [pauseObserver, restoreObserver, clearObserver]
+        let refreshEntitlementObserver = center.addObserver(
+            forName: DaemonSharedIPC.refreshEntitlementCommandName,
+            object: nil,
+            queue: nil
+        ) { _ in
+            Task { @MainActor in
+                await controller.handleCommandRefreshEntitlement()
+            }
+        }
+
+        let promptAccessibilityObserver = center.addObserver(
+            forName: DaemonSharedIPC.promptAccessibilityCommandName,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.promptAccessibilityPermission(controller: controller)
+            }
+        }
+
+        let quitHelperObserver = center.addObserver(
+            forName: DaemonSharedIPC.quitHelperCommandName,
+            object: nil,
+            queue: nil
+        ) { _ in
+            DispatchQueue.main.async {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+
+        commandObservers = [
+            pauseObserver,
+            restoreObserver,
+            clearObserver,
+            refreshEntitlementObserver,
+            promptAccessibilityObserver,
+            quitHelperObserver,
+        ]
     }
 
     private func stopCommandObservers() {
@@ -1057,6 +1103,25 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             center.removeObserver(observer)
         }
         commandObservers.removeAll()
+    }
+
+    @MainActor
+    private func promptAccessibilityPermission(controller: HelperDaemonController) {
+        let trustedNow: Bool
+        if let accessibilityMonitor {
+            trustedNow = accessibilityMonitor.refreshTrust(prompt: true)
+            if trustedNow {
+                attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
+            } else {
+                accessibilityMonitor.stop()
+            }
+        } else {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            trustedNow = AXIsProcessTrustedWithOptions(options)
+        }
+
+        lastAccessibilityTrusted = trustedNow
+        controller.setAccessibilityTrusted(trustedNow)
     }
 
     private func startAccessibilityTrustRefresh(

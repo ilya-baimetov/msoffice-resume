@@ -418,7 +418,7 @@ private enum DaemonEndpointStore {
         }
 
         let data = try Data(contentsOf: url)
-        return try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? NSXPCListenerEndpoint
+        return try NSKeyedUnarchiver.unarchivedObject(ofClass: NSXPCListenerEndpoint.self, from: data)
     }
 
     static func clear(fileManager: FileManager = .default) throws {

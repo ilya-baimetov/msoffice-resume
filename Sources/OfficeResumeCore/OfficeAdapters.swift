@@ -71,8 +71,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
                 launchInstanceID: launchID,
                 capturedAt: capturedAt,
                 documents: [],
-                windowsMeta: [],
-                restoreAttemptedForLaunch: false
+                windowsMeta: []
             )
         }
 
@@ -85,8 +84,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
                 launchInstanceID: launchID,
                 capturedAt: capturedAt,
                 documents: documents,
-                windowsMeta: [],
-                restoreAttemptedForLaunch: false
+                windowsMeta: []
             )
 
         case .outlook:
@@ -97,8 +95,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
                 launchInstanceID: launchID,
                 capturedAt: capturedAt,
                 documents: [],
-                windowsMeta: windowsMeta,
-                restoreAttemptedForLaunch: false
+                windowsMeta: windowsMeta
             )
 
         case .onenote:
@@ -107,8 +104,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
                 launchInstanceID: launchID,
                 capturedAt: capturedAt,
                 documents: [],
-                windowsMeta: [],
-                restoreAttemptedForLaunch: false
+                windowsMeta: []
             )
         }
     }
@@ -309,7 +305,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
             let snapshot = DocumentSnapshot(
                 app: app,
                 displayName: displayName,
-                canonicalPath: path,
+                canonicalPath: path.isEmpty ? nil : path,
                 isSaved: isSaved,
                 isTempArtifact: false,
                 capturedAt: capturedAt
@@ -572,8 +568,8 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         return trimmed
     }
 
-    private func normalizePathField(_ value: String) -> String {
-        normalizeTextField(value)
+    private func normalizePathField(_ value: String?) -> String {
+        normalizeTextField(value ?? "")
     }
 
     private func fallbackDisplayName(for path: String) -> String {
@@ -666,8 +662,7 @@ public struct OneNoteUnsupportedAdapter: OfficeAdapter {
             launchInstanceID: "unsupported",
             capturedAt: Date(),
             documents: [],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
     }
 

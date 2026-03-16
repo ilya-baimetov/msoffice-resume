@@ -14,8 +14,17 @@ check_conflict() {
   fi
 
   installed_bundle_id="$(
-    /usr/bin/defaults read "$target_path/Contents/Info" CFBundleIdentifier 2>/dev/null || true
+    /usr/bin/defaults read "$target_path/Contents/Info.plist" CFBundleIdentifier 2>/dev/null || true
   )"
+
+  if [[ -z "$installed_bundle_id" ]]; then
+    cat <<MSG >&2
+Unable to determine the bundle identifier of the existing Office Resume app at:
+  $target_path
+To avoid overwriting an unknown installation, remove "$target_path" and rerun this installer.
+MSG
+    exit 1
+  fi
   if [[ "$installed_bundle_id" == "$MAS_BUNDLE_ID" ]]; then
     cat <<MSG >&2
 Office Resume Direct cannot be installed over Office Resume MAS.

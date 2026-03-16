@@ -4,30 +4,31 @@
 - Product: `Office Resume`
 - Platform: macOS 14+ (Sonoma or newer), Apple Silicon only
 - App topology:
-  - `MenuBarApp` (UI + control plane)
+  - `MenuBarApp` (UI + account surface + control plane)
   - `LoginItemHelper` (background capture/restore daemon)
-  - `OfficeResumeCore` (shared models, adapters, storage, restore, entitlement abstractions)
+  - `OfficeResumeCore` (shared models, adapters, storage, restore, account/entitlement abstractions)
+  - `OfficeResumeBackend` (Cloudflare Worker for Direct auth/billing/entitlements)
 
 v1 support:
 - Word/Excel/PowerPoint: document-level restore
 - Outlook: lifecycle + window metadata capture; restore = relaunch only
 - OneNote: unsupported (no dedicated menu UI row)
 
-## 2. Repository and Target Layout (Planned)
+## 2. Repository and Target Layout
 ```
 OfficeResume.xcworkspace
   OfficeResumeCore/
   OfficeResumeMAS/
   OfficeResumeDirect/
   OfficeResumeHelper/
-  OfficeResumeBackend/   # Cloudflare Worker project for direct entitlements
+  OfficeResumeBackend/
 ```
 
 Two app schemes/targets remain:
 1. `OfficeResumeMAS`
 2. `OfficeResumeDirect`
 
-Both use shared `OfficeResumeCore`, `OfficeResumeHelper`, and shared menu UI. Non-billing divergence is forbidden unless explicitly re-scoped.
+Both use shared `OfficeResumeCore`, `OfficeResumeHelper`, and shared menu/account UI. Non-billing divergence is forbidden unless explicitly re-scoped.
 
 ## 2.1 Componentized Spec Set
 Use this file as the system-level contract, then apply component specs for scoped implementation:
@@ -52,7 +53,7 @@ enum OfficeApp: String, Codable, CaseIterable {
 struct DocumentSnapshot: Codable, Hashable {
     let app: OfficeApp
     let displayName: String
-    let canonicalPath: String
+    let canonicalPath: String?
     let isSaved: Bool
     let isTempArtifact: Bool
     let capturedAt: Date
@@ -71,7 +72,6 @@ struct AppSnapshot: Codable {
     let capturedAt: Date
     let documents: [DocumentSnapshot]
     let windowsMeta: [WindowMetadata]
-    var restoreAttemptedForLaunch: Bool
 }
 
 enum LifecycleEventType: String, Codable {
@@ -83,6 +83,32 @@ struct LifecycleEvent: Codable {
     let type: LifecycleEventType
     let timestamp: Date
     let details: [String: String]
+}
+
+struct EntitlementState: Codable {
+    let isActive: Bool
+    let plan: Plan
+    let validUntil: Date?
+    let trialEndsAt: Date?
+    let lastValidatedAt: Date?
+}
+
+enum BillingActionKind: String, Codable {
+    case subscribe, manageSubscription
+}
+
+struct BillingAction: Codable, Equatable {
+    let kind: BillingActionKind
+    let title: String
+}
+
+struct AccountState: Codable, Equatable {
+    let email: String?
+    let entitlement: EntitlementState
+    let billingAction: BillingAction?
+    let statusMessage: String?
+    let canSignIn: Bool
+    let canSignOut: Bool
 }
 ```
 
@@ -101,6 +127,15 @@ protocol EntitlementProvider {
     func refresh() async throws -> EntitlementState
     func canRestore() async -> Bool
     func canMonitor() async -> Bool
+}
+
+protocol AccountProvider {
+    func currentAccountState() async -> AccountState
+    func refreshAccountState() async throws -> AccountState
+    func requestSignInLink(email: String) async throws
+    func handleIncomingURL(_ url: URL) async throws -> Bool
+    func billingActionURL() async throws -> URL?
+    func signOut() async throws
 }
 ```
 
@@ -124,7 +159,7 @@ XPC-facing API (helper service):
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
 - Execute startup restore pass for already-running Office apps.
-- Enforce one-shot restore marker per app launch instance.
+- Enforce one-shot restore marker per app launch instance using external marker storage.
 - Enforce entitlement gating (`canMonitor`, `canRestore`).
 - Run as LSUIElement (headless; no visible window).
 
@@ -132,17 +167,17 @@ XPC-facing API (helper service):
 - Run as dockless LSUIElement menu bar app.
 - Use one shared menu UI implementation for MAS and Direct.
 - Present standard `MenuBarExtra` menu style with:
+  - helper connection feedback
+  - autostart status/action
+  - Accessibility status/action
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
   - `Advanced > Clear Snapshot`
   - `Advanced > Open Debug Log in Console`
+  - `Account…`
   - `Quit`
-- Show accessibility status:
-  - `Accessibility: OK`
-  - `Accessibility: click to fix` (opens system settings)
-- Show autostart status:
-  - `Autostart: OK`
-  - `Autostart: click to fix` (opens Login Items settings)
+- Own the shared account window.
+- Receive Direct auth callback URLs and hand them to the Direct account provider.
 - Start helper via `SMAppService` and sibling-launch fallback.
 - `Quit` must terminate both menu app and helper.
 
@@ -150,11 +185,13 @@ XPC-facing API (helper service):
 - Snapshot storage, event log persistence, temp artifact indexing.
 - Dedupe restore planning and one-shot marker handling.
 - Artifact purge for stale temp data.
+- Shared status/log/marker storage rooted under app group or debug fallback.
 
 ### 5.4 Billing Providers
-- `StoreKitEntitlementProvider` (MAS)
-- `StripeEntitlementProvider` (Direct)
-- Shared `EntitlementState` model + 7-day offline grace policy.
+- `StoreKitEntitlementProvider` + MAS account provider
+- `StripeEntitlementProvider` + Direct account provider
+- Shared `EntitlementState` model + 7-day offline grace policy
+- No production synthetic local trial state
 
 ## 6. Event Capture Model
 
@@ -168,8 +205,8 @@ XPC-facing API (helper service):
   - `com.microsoft.onenote.mac`
 
 ### 6.2 Accessibility Capture (Primary)
-- Require accessibility trust (`AXIsProcessTrustedWithOptions` prompt at startup).
-- Refresh trust status periodically while helper runs (~2s cadence).
+- Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt at startup/remediation).
+- Refresh trust status periodically while helper runs to catch runtime permission changes.
 - On app launch, attach `AXObserver` and subscribe to:
   - `kAXWindowCreatedNotification`
   - `kAXUIElementDestroyedNotification`
@@ -190,7 +227,7 @@ XPC-facing API (helper service):
 - Untitled handling: force-save to `unsaved/`.
 
 ### 7.2 Excel Adapter
-- Query `workbooks`/`documents`, `name`, `full name`, `saved`.
+- Query `workbooks`, `name`, `full name`, `saved`.
 - Restore missing workbook paths only.
 - Force-save untitled workbooks to `unsaved/`.
 
@@ -209,17 +246,16 @@ XPC-facing API (helper service):
 - No fetch/restore beyond lifecycle visibility.
 
 ## 8. Restore Engine
-
 On Office app launch (and helper startup pass for already-running apps):
 1. Refresh entitlement.
 2. If paused or cannot restore, return.
 3. Load latest snapshot for app.
 4. If none, return.
 5. Build launch instance key.
-6. If one-shot marker already set, return.
+6. If one-shot marker already exists for that app launch instance, return.
 7. Query currently open docs where applicable.
 8. Diff snapshot docs against currently open docs.
-9. Open only missing docs.
+9. Open only missing docs with non-nil canonical paths.
 10. Mark restore attempted for launch key.
 11. Emit success/failure events with per-item details.
 
@@ -228,7 +264,6 @@ Failure handling:
 - Emit `restoreFailed` diagnostics for failed paths.
 
 ## 9. Unsaved Temp Artifact Handling
-
 ### 9.1 Index Model
 `unsaved-index-v1.json` contains:
 - artifact ID
@@ -237,12 +272,13 @@ Failure handling:
 - original display name
 - artifact path
 - created/updated timestamps
-- last referenced snapshot ID
+- last referenced snapshot launch ID
 
 ### 9.2 Force-save policy
 - Trigger during AX-capture cycle for W/E/P when unsaved docs detected.
 - Save into `<stateRoot>/unsaved/<artifact-id>.<ext>`.
 - Persist/update index mapping.
+- Replace unsaved snapshot entries with artifact-backed paths when save succeeds.
 
 ### 9.3 Purge policy
 Purge artifact when:
@@ -252,154 +288,121 @@ Purge artifact when:
 Purge orphan index entries pointing to missing files.
 
 ## 10. Storage Layout
-
-### 10.1 Unified primary root (MAS + Direct)
+### 10.1 Unified primary root (MAS + Direct signed runs)
 `<AppGroupContainer>/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
 
-### 10.2 Dev-only fallback root (unsigned local runs)
-`~/Library/Application Support/com.pragprod.msofficeresume/Saved Application State/<officeBundleID>.savedState/OfficeResume/`
+### 10.2 Shared auxiliary root (same app-group-or-debug-fallback root)
+- `ipc/daemon-status-v1.json`
+- `ipc/daemon-xpc-endpoint-v1.data`
+- `restore/restore-markers-v1.json`
+- `logs/debug-v1.log`
+- `entitlements/entitlement-cache-v1.json`
 
-### 10.3 Files
-- `snapshot-v1.json`: latest snapshot
-- `events-v1.ndjson`: append-only local events
-- `unsaved-index-v1.json`: unsaved artifact index
-- `unsaved/`: force-saved temp documents
+### 10.3 Dev-only fallback root (unsigned local runs)
+`~/Library/Application Support/com.pragprod.msofficeresume/...`
 
-## 11. Entitlements and Permissions
+## 11. Account and Entitlement Architecture
+### 11.1 MAS
+- StoreKit 2 is the source of truth for active subscription/trial state.
+- Account window can refresh StoreKit-backed state and open Apple subscription management.
+- Cached entitlement state supports offline grace.
 
-Required:
-- `NSAppleEventsUsageDescription` in app/helper targets.
-- Accessibility permission/trust for full capture fidelity.
-- App Group entitlement shared by menu app + helper.
-- Login item registration via `SMAppService`.
-- `LSUIElement=YES` for menu app and helper targets.
+### 11.2 Direct
+- Backend is the source of truth for sign-in, trial, free-pass, and Stripe-backed subscription state.
+- `POST /auth/request-link` sends email via Resend.
+- `GET /auth/verify?token=...` validates the token server-side, mints session, and redirects to app custom URL scheme.
+- App stores session token in Keychain and refreshes entitlement cache.
+- Direct checkout requires verified sign-in before purchase is possible.
+- Signed-in, non-paid Direct users open a Worker-hosted pricing page from the account window.
+- Worker-hosted pricing creates Stripe Checkout Sessions for monthly/yearly plans.
+- Existing paid Direct subscribers open Stripe Billing Portal.
+- Remaining Direct trial time is converted into Stripe-supported subscription-trial settings during Checkout creation so billing starts after unused trial time.
+- Debug-only local shortcut may use a returned debug token when explicit backend dev mode is enabled.
 
-MAS-specific:
-- App Sandbox enabled for menu app and helper.
-- Apple Events targeting/exceptions for Office bundle IDs as required.
-- Document App Review risk for automation permissions.
+### 11.3 Debug Behavior
+- Debug entitlement bypass is compile-time gated and requires explicit runtime opt-in.
+- Debug bypass must not exist in Release behavior.
+- Debug local builds may use local storage fallback when app-group container is unavailable.
 
-Direct-specific:
-- App Sandbox enabled for menu app and helper.
-- Network access for Stripe/backend calls.
-- Release path assumes signed entitlement-capable app-group runtime.
-
-## 12. Billing and Entitlement Architecture
-
-## 12.1 Entitlement state
-```swift
-struct EntitlementState: Codable {
-    enum Plan: String, Codable { case trial, monthly, yearly, none }
-    let isActive: Bool
-    let plan: Plan
-    let validUntil: Date?
-    let trialEndsAt: Date?
-    let lastValidatedAt: Date?
-}
-```
-
-Rules:
-- Offline grace: if refresh fails and last validation <= 7 days, remain active.
-- Inactive entitlement disables capture and restore; status/history remain readable.
-
-### 12.2 MAS (StoreKit 2)
-- Subscription group:
-  - `officeresume.monthly`
-  - `officeresume.yearly`
-- 14-day introductory trial.
-- Validate current entitlements at startup and periodic refresh.
-
-### 12.3 Direct (Stripe + Worker)
-- Stripe prices:
-  - monthly `$5`
-  - yearly `$50`
-  - `trial_period_days=14`
-- Auth: email magic link.
-- Worker endpoints:
-  - `POST /auth/request-link`
-  - `POST /auth/verify`
-  - `GET /entitlements/current`
-  - `POST /webhooks/stripe`
-- Free-pass policy (Direct): backend-authoritative allowlist tied to verified session identity.
-- Production client path must not grant free-pass via local file/env overrides.
+## 12. Helper/Menu Coordination
+- Preferred transport: XPC.
+- Required fallback: shared status file plus distributed command notifications.
+- Shared IPC commands include:
+  - pause/resume tracking
+  - restore now
+  - clear snapshot
+  - refresh entitlement cache/state
+  - prompt Accessibility permissions
+  - helper quit
+- Menu treats helper as available when XPC is healthy or shared IPC fallback is healthy.
+- Menu refresh model:
+  - immediate fetch on startup
+  - fetch on menu open
+  - fetch after user actions
+  - file-watch or notification-driven refresh when shared status changes
+  - bounded retry/backoff while establishing helper connectivity
 
 ## 13. XPC Contract Details
-
-### 13.0 Transport
-- Preferred: XPC request/reply for status + commands.
-- Required fallback:
-  - helper publishes status JSON to shared IPC path
-  - app reads shared status when XPC fetch fails
-  - app posts distributed command notifications
-  - helper subscribes and routes to same handlers
-
-Shared IPC fallback path rules:
-- primary: app-group container `ipc/`
-- dev-only unsigned fallback: `~/Library/Application Support/com.pragprod.msofficeresume/ipc/`
-
-### 13.1 Status DTO
-Must include:
-- pause flag
-- helper running flag
+Helper status payload must include:
+- pause state
+- helper running state
 - entitlement summary
-- accessibility trust state
+- Accessibility trust state
 - per-app latest snapshot timestamps
 - unsupported apps list
 
-### 13.2 Commands
-- `restoreNow(app?)`
-- `clearSnapshot(app?)`
-- `setPaused(Bool)`
+Client behavior:
+- XPC timeout is bounded.
+- On XPC failure, fall back to shared status file and distributed commands.
+- UI actions stay enabled when fallback transport is healthy.
 
-## 14. Build Flavor Configuration
-- Compile flags:
-  - `BILLING_MAS`
-  - `BILLING_DIRECT`
-- Separate entitlements plist per target where required.
-- Separate bundle IDs per distribution channel.
-- Common UI/helper/core behavior across channels.
-- Runtime app process/display naming unified as `OfficeResume`.
-- Direct `.pkg` preinstall policy: if `/Applications/Office Resume.app` exists with MAS bundle ID, abort install and require uninstall-first flow.
-- Direct `.pkg` must be built with non-relocatable bundle components so install target remains `/Applications/Office Resume.app`.
-- Helper packaging policy: helper app bundle is embedded at `Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app` and is not installed as `/Applications/OfficeResumeHelper.app`.
+## 14. Build, Packaging, and Release Modes
+- `Debug`:
+  - unsigned allowed
+  - local testing supported
+  - debug-only bypasses may be enabled manually
+- `ReleaseDirect`:
+  - signed/notarized `.pkg`
+  - bundle path `/Applications/Office Resume.app`
+  - embedded helper at `Contents/Library/LoginItems/OfficeResumeHelper.app`
+- `ReleaseMAS`:
+  - archive/App Store Connect distribution
 
-## 15. Error Handling and Logging
-- Local-only structured logs.
-- Include timestamp, app, operation, result, and error context.
-- Menu action opens local debug log in Console.
-- No remote logging pipeline in v1.
+Direct `.pkg` rules:
+- Preinstall must block overwriting MAS build with uninstall-first guidance.
+- Payload must remain non-relocatable so install target stays `/Applications/Office Resume.app`.
+- Postinstall must stop stale running processes and relaunch cleanly.
+
+## 15. Permissions and Entitlements
+- `NSAppleEventsUsageDescription` in menu/helper targets.
+- App Sandbox enabled for MAS, Direct, and helper.
+- Application Group: `group.com.pragprod.msofficeresume`.
+- Login item registration via `SMAppService`.
+- Direct target/helper require network client entitlement for backend communication.
+- Direct target registers a custom URL scheme for auth callback.
+- Keychain sharing/access must support menu app + helper session access in signed builds.
 
 ## 16. Test Matrix
-
-1. Launch/quit capture across all Office apps.
-2. Accessibility-trusted path attaches AX observers and captures transitions.
-3. Accessibility-denied path degrades gracefully and surfaces clear status.
-4. W/E/P saved doc snapshot capture and diff correctness.
-5. Relaunch restore dedupe opens only missing docs.
-6. Startup restore pass handles already-running Office apps after login/reboot.
-7. One-shot marker blocks repeat restore in same launch instance.
-8. Untitled force-save creates artifact + index mapping.
-9. Unsaved artifact restore works and stale purge executes.
-10. Outlook relaunch-only flow executes without message-level restore.
-11. OneNote remains unsupported.
-12. Trial active allows monitor/restore.
-13. Inactive entitlement disables monitor/restore while keeping read-only status/history.
-14. MAS StoreKit refresh logic correct.
-15. Direct Stripe entitlement refresh logic correct.
-16. Offline grace expiration > 7 days disables paid features.
-17. Pause tracking stops capture and auto-restore triggers.
-18. Clear snapshot removes active restore state and relevant artifacts.
-19. No remote telemetry calls emitted.
-20. Direct free-pass only granted when backend allowlist/session says active.
-21. Direct `.pkg` install/upgrade works for repeat Direct installs.
-22. Direct `.pkg` preinstall check blocks install when MAS build is already installed at `/Applications/Office Resume.app`.
-23. Installed helper is not visible as a top-level `/Applications` app.
-24. Menu autostart status reflects main app + helper login-item health and can open Login Items settings.
-
-## 17. Acceptance Criteria
-- All PRD required behaviors implemented.
-- Support matrix behavior matches v1 scope exactly.
-- Both MAS and Direct schemes build and run.
-- Helper is stable during long-running AX sessions.
-- Test matrix passes (automated + manual scenarios).
-- Docs/spec updates remain aligned with implementation.
+1. Launch/quit detection for each Office app updates lifecycle log correctly.
+2. Accessibility-triggered capture updates snapshot diff correctly for W/E/P.
+3. Auto-restore on relaunch opens only missing docs and avoids duplicates.
+4. Startup restore pass covers already-running Office apps after login/reboot.
+5. One-shot marker prevents repeated restore attempts in the same launch instance.
+6. Untitled force-save creates temp artifact + metadata and supports reopen flow.
+7. Untitled artifact purge executes after artifact is no longer needed.
+8. Outlook limited mode relaunches app but does not attempt unreliable window/message reconstruction.
+9. OneNote remains unsupported and absent from dedicated menu messaging.
+10. Accessibility denial/grant/revoke updates status correctly while running.
+11. Menu fallback transport works when XPC is temporarily unavailable.
+12. Direct request-link production path does not expose raw tokens.
+13. Direct debug-only request-link shortcut works only when explicit dev mode is enabled.
+14. Direct verified user gets one persistent 14-day trial window.
+15. Hard-coded and env-extended free-pass allowlist works only for verified emails.
+16. Invalid Stripe signatures are rejected; valid webhooks update entitlements.
+17. Direct billing entry endpoint returns a Worker-hosted pricing URL for signed-in non-paid users and Billing Portal URL for signed-in paid users.
+18. Direct Checkout Session creation uses verified email identity, selected price ID, and converted remaining trial time.
+19. MAS StoreKit refresh logic reports active/inactive state correctly.
+20. Debug-only entitlement bypass requires explicit runtime opt-in and is absent in Release behavior.
+21. Direct `.pkg` install/upgrade works and blocks MAS conflict.
+22. Debug log opens from the unified shared log location.
+22. Docs consistency, UI guardrails, spec-drift guardrails, Xcode builds/tests, backend lint/tests, and static analysis pass.

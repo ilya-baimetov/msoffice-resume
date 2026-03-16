@@ -14,6 +14,15 @@ public protocol EntitlementProvider {
     func canMonitor() async -> Bool
 }
 
+public protocol AccountProvider {
+    func currentAccountState() async -> AccountState
+    func refreshAccountState() async throws -> AccountState
+    func requestSignInLink(email: String) async throws
+    func handleIncomingURL(_ url: URL) async throws -> Bool
+    func billingActionURL() async throws -> URL?
+    func signOut() async throws
+}
+
 public protocol DaemonXPC {
     func getStatus(_ reply: @escaping (DaemonStatusDTO) -> Void)
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)

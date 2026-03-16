@@ -1,7 +1,7 @@
 # Backend Worker Spec (`OfficeResumeBackend`)
 
 ## Scope
-Direct-channel entitlement service for auth + subscription state.
+Direct-channel auth, subscription, billing-portal, and entitlement service.
 
 ## Owned Files
 - `OfficeResumeBackend/src/**`
@@ -11,40 +11,73 @@ Direct-channel entitlement service for auth + subscription state.
 ## Responsibilities
 1. Provide magic-link auth endpoints.
 2. Provide session-backed current entitlement endpoint.
-3. Process Stripe webhook updates.
-4. Support free-pass allowlist path (backend-authoritative).
-5. Support persistence with D1/KV, with in-memory fallback for local tests.
+3. Provide authenticated billing entry resolution, Worker-hosted pricing, Stripe Checkout Session creation, and billing-portal URL endpoint.
+4. Process Stripe webhook updates.
+5. Support backend-authoritative free-pass allowlist.
+6. Support persistence with D1/KV, with in-memory fallback for local tests.
+7. Deliver production sign-in emails through Resend.
 
 ## Endpoint Contract
 - `POST /auth/request-link`
-- `POST /auth/verify`
+- `POST /auth/verify` (debug/programmatic exchange)
+- `GET /auth/verify`
 - `GET /entitlements/current`
+- `GET /billing/entry`
+- `GET /billing/pricing`
+- `POST /billing/checkout`
+- `GET /billing/checkout/success`
+- `GET /billing/checkout/cancel`
 - `POST /webhooks/stripe`
+
+## Auth Requirements
+- Normalize email before storage/lookup.
+- `POST /auth/request-link`:
+  - production: create token, store it, send email, return `202 { ok: true }`
+  - debug-only mode: may also return a debug token for local testing
+- `GET /auth/verify` validates token, creates session, and redirects to app custom URL scheme.
+- `POST /auth/verify` exists only for debug/programmatic local flows.
+- Session responses may include email metadata for the client account UI.
+
+## Trial and Subscription Requirements
+- Persist one trial start timestamp per normalized verified email.
+- First verified sign-in starts the 14-day trial.
+- Repeated entitlement reads reuse the same trial window.
+- Paid Stripe subscription state overrides trial state normally.
+- Subscription storage must retain enough information to create/manage Stripe billing portal sessions.
+- Signed-in, non-paid users use Worker-hosted pricing plus Stripe Checkout Sessions for monthly/yearly purchases.
+- Checkout must convert remaining trial time into Stripe-supported subscription-trial settings.
+- Existing paid users use Stripe Billing Portal instead of Checkout.
 
 ## Security Requirements
 - Use cryptographically strong token generation for magic links and sessions.
+- Production `request-link` must not expose raw verification tokens.
 - Verify Stripe webhook signatures when secret is configured.
 - Enforce replay-window checks for webhook timestamps.
 - Reject invalid bearer/session tokens.
 - Normalize email identity fields consistently.
 
 ## Free-Pass Requirements
-- Free-pass derives only from backend allowlist (`FREE_PASS_EMAILS`) and verified session identity.
+- Free-pass derives only from backend allowlist and verified session identity.
+- Support a checked-in hard-coded allowlist file plus env-based additions.
 - Response schema remains compatible with app entitlement parser.
 - Do not provide unauthenticated free-pass activation paths.
 
 ## Persistence Requirements
-- D1 tables (or equivalent model): magic links, sessions, subscriptions.
-- KV keys (or equivalent model): temporary link/session/subscription mirrors.
+- D1 tables (or equivalent model): magic links, sessions, subscriptions, trials, and short-lived billing entry tokens.
+- KV keys (or equivalent model): temporary link/session/subscription/trial/billing-entry mirrors.
 - In-memory store allowed only for local/test fallback.
 
 ## Forbidden Changes
 - Do not add analytics/event telemetry endpoints.
 - Do not change entitlement response schema without updating shared specs/contracts.
 - Do not add client-trust free-pass activation behavior.
+- Do not ship production behavior that depends on local-only debug tokens.
 
 ## Component Acceptance Checks
 - `npm test` passes.
+- Production `request-link` returns no raw token.
+- Debug-only token exposure is explicitly gated.
+- Trial persistence is covered by tests.
 - Webhook signature and replay validation are covered.
-- Subscription updates are persisted and reflected in entitlement reads.
+- Billing entry, pricing page, Checkout Session creation, and billing portal behavior are covered.
 - Free-pass allowlist behavior is covered by tests.

@@ -60,6 +60,24 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(decoded, snapshot)
     }
 
+    func testDocumentSnapshotDecodesLegacyEmptyPathAsNil() throws {
+        let json = """
+        {
+          "app": "word",
+          "displayName": "Untitled 1",
+          "canonicalPath": "",
+          "isSaved": false,
+          "isTempArtifact": false,
+          "capturedAt": "2023-11-14T22:13:20Z"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(DocumentSnapshot.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.canonicalPath)
+    }
+
     func testRestoreEngineDedupeAndOneShotMarker() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine")
         let snapshotStore = FileSnapshotStore(
@@ -79,8 +97,7 @@ final class OfficeResumeCoreTests: XCTestCase {
                 makeDocument(path: "/tmp/b.docx"),
                 makeDocument(path: "/tmp/b.docx"),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
         try await snapshotStore.saveSnapshot(snapshot)
 
@@ -94,7 +111,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         )
 
         XCTAssertNotNil(plan)
-        XCTAssertEqual(plan?.documentsToOpen.map(\.canonicalPath), ["/tmp/b.docx"])
+        XCTAssertEqual(plan?.documentsToOpen.compactMap(\.canonicalPath), ["/tmp/b.docx"])
 
         try await engine.markRestoreCompleted(app: .word, launchInstanceID: launchID)
 
@@ -125,8 +142,7 @@ final class OfficeResumeCoreTests: XCTestCase {
                 DocumentSnapshot(app: .powerpoint, displayName: "Bad", canonicalPath: "missing value", isSaved: true, isTempArtifact: false, capturedAt: now),
                 DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: " /tmp/demo.pptx ", isSaved: true, isTempArtifact: false, capturedAt: now),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
         try await snapshotStore.saveSnapshot(snapshot)
 
@@ -136,7 +152,7 @@ final class OfficeResumeCoreTests: XCTestCase {
             currentlyOpenDocuments: []
         )
 
-        XCTAssertEqual(plan?.documentsToOpen.map(\.canonicalPath), ["/tmp/demo.pptx"])
+        XCTAssertEqual(plan?.documentsToOpen.compactMap(\.canonicalPath), ["/tmp/demo.pptx"])
     }
 
     func testFileSnapshotStoreRoundTripAndEvents() async throws {
@@ -151,8 +167,7 @@ final class OfficeResumeCoreTests: XCTestCase {
             launchInstanceID: "launch-1",
             capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
             documents: [makeDocument(path: "/tmp/sheet.xlsx", app: .excel)],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         try await store.saveSnapshot(snapshot)
@@ -201,23 +216,13 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: artifactURL.path))
     }
 
-    func testTrialEntitlementExpiresAfter14Days() async throws {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
-        let store = try EntitlementFileStore(baseDirectory: makeTempDirectory(name: "trial-entitlement"))
-        let provider = makeIsolatedTrialProvider(store: store, now: { now })
+    func testCachedEntitlementProviderIsInactiveWithoutCacheOrRemote() async throws {
+        let store = try EntitlementFileStore(baseDirectory: makeTempDirectory(name: "inactive-entitlement"))
+        let provider = makeIsolatedCachedProvider(store: store, now: Date.init)
 
         let initial = await provider.currentState()
-        XCTAssertTrue(initial.isActive)
-        XCTAssertEqual(initial.plan, .trial)
-
-        now = now.addingTimeInterval(13 * 24 * 60 * 60)
-        let stillActive = await provider.currentState()
-        XCTAssertTrue(stillActive.isActive)
-
-        now = now.addingTimeInterval(2 * 24 * 60 * 60)
-        let expired = await provider.currentState()
-        XCTAssertFalse(expired.isActive)
-        XCTAssertEqual(expired.plan, .none)
+        XCTAssertFalse(initial.isActive)
+        XCTAssertEqual(initial.plan, .none)
     }
 
     func testOfflineGraceDisablesAfterSevenDays() async throws {
@@ -225,7 +230,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         var now = baseNow
 
         let store = try EntitlementFileStore(baseDirectory: makeTempDirectory(name: "offline-grace"))
-        let provider = makeIsolatedTrialProvider(store: store, now: { now })
+        let provider = makeIsolatedCachedProvider(store: store, now: { now })
 
         let cached = EntitlementState(
             isActive: true,
@@ -313,14 +318,13 @@ final class OfficeResumeCoreTests: XCTestCase {
                 DocumentSnapshot(
                     app: .word,
                     displayName: "Untitled 1",
-                    canonicalPath: "",
+                    canonicalPath: nil,
                     isSaved: false,
                     isTempArtifact: false,
                     capturedAt: Date()
                 ),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         let artifacts = try await adapter.forceSaveUntitled(state: state)
@@ -355,8 +359,7 @@ final class OfficeResumeCoreTests: XCTestCase {
                 DocumentSnapshot(app: .powerpoint, displayName: "Deck 1", canonicalPath: "  /tmp/deck1.pptx  ", isSaved: true, isTempArtifact: false, capturedAt: now),
                 DocumentSnapshot(app: .powerpoint, displayName: "Deck 2", canonicalPath: "https://example.com/deck2.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         let result = try await adapter.restore(snapshot: snapshot)
@@ -388,8 +391,7 @@ final class OfficeResumeCoreTests: XCTestCase {
             documents: [
                 DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: "/tmp/retry.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         let result = try await adapter.restore(snapshot: snapshot)
@@ -426,8 +428,7 @@ final class OfficeResumeCoreTests: XCTestCase {
                     capturedAt: now
                 ),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         _ = try await adapter.restore(snapshot: snapshot)
@@ -477,8 +478,7 @@ final class OfficeResumeCoreTests: XCTestCase {
                     capturedAt: now
                 ),
             ],
-            windowsMeta: [],
-            restoreAttemptedForLaunch: false
+            windowsMeta: []
         )
 
         _ = try await adapter.restore(snapshot: snapshot)
@@ -487,6 +487,161 @@ final class OfficeResumeCoreTests: XCTestCase {
             return
         }
         XCTAssertTrue(openScript.contains("open POSIX file \"\(localDeck.path)\""))
+    }
+
+    func testDirectAccountProviderMapsSubscribeBillingAction() async throws {
+        try await withIsolatedDirectSessionStore { sessionStore in
+            let sessionToken = "session-subscribe"
+            try await sessionStore.save(DirectSession(email: "user@example.com", sessionToken: sessionToken))
+
+            let provider = try self.makeDirectAccountProvider { request in
+                switch request.url?.path {
+                case "/entitlements/current":
+                    XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(sessionToken)")
+                    return Self.jsonHTTPResponse(
+                        statusCode: 200,
+                        url: request.url!,
+                        json: """
+                        {
+                          "isActive": true,
+                          "plan": "trial",
+                          "validUntil": "2026-03-28T12:00:00Z",
+                          "trialEndsAt": "2026-03-28T12:00:00Z"
+                        }
+                        """
+                    )
+                case "/billing/entry":
+                    XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(sessionToken)")
+                    return Self.jsonHTTPResponse(
+                        statusCode: 200,
+                        url: request.url!,
+                        json: """
+                        {
+                          "kind": "subscribe",
+                          "title": "Choose Plan…",
+                          "url": "https://billing.example.com/pricing?entry=abc"
+                        }
+                        """
+                    )
+                default:
+                    XCTFail("Unexpected request: \(request.url?.absoluteString ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+
+            let state = try await provider.refreshAccountState()
+            XCTAssertEqual(state.email, "user@example.com")
+            XCTAssertEqual(state.entitlement.plan, .trial)
+            XCTAssertEqual(state.billingAction?.kind, .subscribe)
+            XCTAssertEqual(state.billingAction?.title, "Choose Plan…")
+        }
+    }
+
+    func testDirectAccountProviderMapsManageSubscriptionBillingAction() async throws {
+        try await withIsolatedDirectSessionStore { sessionStore in
+            let sessionToken = "session-manage"
+            try await sessionStore.save(DirectSession(email: "paid@example.com", sessionToken: sessionToken))
+
+            let provider = try self.makeDirectAccountProvider { request in
+                switch request.url?.path {
+                case "/entitlements/current":
+                    return Self.jsonHTTPResponse(
+                        statusCode: 200,
+                        url: request.url!,
+                        json: """
+                        {
+                          "isActive": true,
+                          "plan": "monthly",
+                          "validUntil": "2026-04-14T12:00:00Z",
+                          "trialEndsAt": null
+                        }
+                        """
+                    )
+                case "/billing/entry":
+                    return Self.jsonHTTPResponse(
+                        statusCode: 200,
+                        url: request.url!,
+                        json: """
+                        {
+                          "kind": "manageSubscription",
+                          "title": "Manage Subscription",
+                          "url": "https://billing.example.com/portal"
+                        }
+                        """
+                    )
+                default:
+                    XCTFail("Unexpected request: \(request.url?.absoluteString ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+
+            let state = try await provider.refreshAccountState()
+            XCTAssertEqual(state.billingAction?.kind, .manageSubscription)
+            XCTAssertEqual(state.billingAction?.title, "Manage Subscription")
+        }
+    }
+
+    func testDirectAccountProviderReturnsNoBillingActionWhenBackendRespondsNoContent() async throws {
+        try await withIsolatedDirectSessionStore { sessionStore in
+            let sessionToken = "session-free-pass"
+            try await sessionStore.save(DirectSession(email: "free@example.com", sessionToken: sessionToken))
+
+            let provider = try self.makeDirectAccountProvider { request in
+                switch request.url?.path {
+                case "/entitlements/current":
+                    return Self.jsonHTTPResponse(
+                        statusCode: 200,
+                        url: request.url!,
+                        json: """
+                        {
+                          "isActive": true,
+                          "plan": "yearly",
+                          "validUntil": "2027-03-14T12:00:00Z",
+                          "trialEndsAt": null
+                        }
+                        """
+                    )
+                case "/billing/entry":
+                    return Self.emptyHTTPResponse(statusCode: 204, url: request.url!)
+                default:
+                    XCTFail("Unexpected request: \(request.url?.absoluteString ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+
+            let state = try await provider.refreshAccountState()
+            XCTAssertNil(state.billingAction)
+        }
+    }
+
+    func testDirectAccountProviderAcceptsBillingRefreshCallbackWhenSignedIn() async throws {
+        try await withIsolatedDirectSessionStore { sessionStore in
+            try await sessionStore.save(DirectSession(email: "user@example.com", sessionToken: "session-refresh"))
+
+            let provider = try self.makeDirectAccountProvider(sessionStore: sessionStore) { request in
+                XCTFail("Unexpected network request: \(request.url?.absoluteString ?? "nil")")
+                throw URLError(.badURL)
+            }
+
+            let handled = try await provider.handleIncomingURL(
+                URL(string: "officeresume-direct://auth?action=billingRefresh")!
+            )
+            XCTAssertTrue(handled)
+        }
+    }
+
+    func testDirectAccountProviderRejectsBillingRefreshCallbackWhenSignedOut() async throws {
+        try await withIsolatedDirectSessionStore { sessionStore in
+            let provider = try self.makeDirectAccountProvider(sessionStore: sessionStore) { request in
+                XCTFail("Unexpected network request: \(request.url?.absoluteString ?? "nil")")
+                throw URLError(.badURL)
+            }
+
+            let handled = try await provider.handleIncomingURL(
+                URL(string: "officeresume-direct://auth?billingRefresh=1")!
+            )
+            XCTAssertFalse(handled)
+        }
     }
 
     private func makeDocument(path: String, app: OfficeApp = .word) -> DocumentSnapshot {
@@ -508,11 +663,11 @@ final class OfficeResumeCoreTests: XCTestCase {
         return root
     }
 
-    private func makeIsolatedTrialProvider(
+    private func makeIsolatedCachedProvider(
         store: EntitlementFileStore,
         now: @escaping () -> Date
-    ) -> TrialEntitlementProvider {
-        return TrialEntitlementProvider(
+    ) -> CachedEntitlementProvider {
+        return CachedEntitlementProvider(
             store: store,
             now: now,
             overrideEnvironment: [:]
@@ -529,6 +684,81 @@ final class OfficeResumeCoreTests: XCTestCase {
         }
         return String(remainder[..<end])
     }
+
+    private func makeDirectAccountProvider(
+        sessionStore: DirectSessionKeychainStore = DirectSessionKeychainStore(),
+        requestHandler: @escaping @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) throws -> DirectAccountProvider {
+        let store = try EntitlementFileStore(baseDirectory: makeTempDirectory(name: "direct-account-entitlements"))
+        let configuration = DirectServiceConfiguration(
+            baseURL: URL(string: "https://example.com")!,
+            callbackScheme: "officeresume-direct"
+        )
+        let session = try Self.makeMockSession(requestHandler: requestHandler)
+        let userDefaultsSuite = "OfficeResumeTests.DirectAccount.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: userDefaultsSuite) ?? .standard
+        userDefaults.removePersistentDomain(forName: userDefaultsSuite)
+
+        return DirectAccountProvider(
+            configuration: configuration,
+            sessionStore: sessionStore,
+            entitlementStore: store,
+            session: session,
+            userDefaults: userDefaults
+        )
+    }
+
+    private func withIsolatedDirectSessionStore(
+        _ body: @escaping (DirectSessionKeychainStore) async throws -> Void
+    ) async throws {
+        let sessionStore = DirectSessionKeychainStore()
+        let originalSession = try await sessionStore.load()
+        try await sessionStore.clear()
+
+        do {
+            try await body(sessionStore)
+        } catch {
+            try? await sessionStore.clear()
+            if let originalSession {
+                try? await sessionStore.save(originalSession)
+            }
+            throw error
+        }
+
+        try await sessionStore.clear()
+        if let originalSession {
+            try await sessionStore.save(originalSession)
+        }
+    }
+
+    private static func makeMockSession(
+        requestHandler: @escaping @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) throws -> URLSession {
+        MockURLProtocol.requestHandler = requestHandler
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private static func jsonHTTPResponse(statusCode: Int, url: URL, json: String) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, Data(json.utf8))
+    }
+
+    private static func emptyHTTPResponse(statusCode: Int, url: URL) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return (response, Data())
+    }
 }
 
 private struct MockScriptExecutor: ScriptExecuting {
@@ -537,4 +767,34 @@ private struct MockScriptExecutor: ScriptExecuting {
     func run(script: String) throws -> String {
         try handler(script)
     }
+}
+
+private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
+    static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

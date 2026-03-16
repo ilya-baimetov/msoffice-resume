@@ -179,7 +179,7 @@ jobs:
           if has_any '^Sources/OfficeResumeHelper/'; then
             helper_changed=true
           fi
-          if has_any '^Sources/OfficeResumeDirect/|^Sources/OfficeResumeMAS/'; then
+          if has_any '^Sources/OfficeResumeDirect/|^Sources/OfficeResumeMAS/|^Sources/MenuUIShared/'; then
             ui_changed=true
           fi
           if has_any '^OfficeResumeBackend/'; then

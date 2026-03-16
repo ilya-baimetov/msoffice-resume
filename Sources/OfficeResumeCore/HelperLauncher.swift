@@ -35,9 +35,33 @@ public enum HelperLauncher {
         }
 
         if !runningHelpers.isEmpty {
-            terminateHelperIfRunning(bundleIdentifier: bundleIdentifier)
+            DispatchQueue.global(qos: .userInitiated).async {
+                terminateHelperIfRunning(bundleIdentifier: bundleIdentifier)
+                openHelper(at: helperURL)
+            }
+            return
         }
 
+        openHelper(at: helperURL)
+    }
+
+    public static func terminateHelperIfRunningAsync(
+        bundleIdentifier: String = helperBundleIdentifier,
+        completion: (() -> Void)? = nil
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            terminateHelperIfRunning(bundleIdentifier: bundleIdentifier)
+            if let completion {
+                DispatchQueue.main.async(execute: completion)
+            }
+        }
+    }
+
+    public static func requestHelperQuit() {
+        DaemonSharedIPC.postQuitHelper()
+    }
+
+    private static func openHelper(at helperURL: URL) {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         NSWorkspace.shared.openApplication(at: helperURL, configuration: configuration) { _, _ in }

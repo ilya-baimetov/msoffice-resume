@@ -21,7 +21,7 @@ If implementing one component in isolation, load only:
 Do not preload unrelated component specs.
 
 ## Objective
-Build and maintain Office Resume as a unified macOS runtime architecture where MAS and Direct differ only by billing provider/channel metadata.
+Build and maintain Office Resume as a unified macOS runtime architecture where MAS and Direct differ only by billing/auth provider and channel-required distribution metadata.
 
 v1 requirements:
 - Word/Excel/PowerPoint: document-level restore
@@ -30,27 +30,34 @@ v1 requirements:
 - 14-day trial
 - `$5/month` and `$50/year`
 - StoreKit 2 for MAS
-- Stripe + Cloudflare Worker entitlement service for Direct
+- Stripe + Cloudflare Worker + Resend for Direct
 
 Capture strategy is locked:
-- Accessibility (`AXObserver`) is primary event interception mechanism.
+- Accessibility (`AXObserver`) is the primary event interception mechanism.
 - Polling fallback is removed in v1.
 
 Direct distribution strategy is locked:
-- Canonical direct installer is a standard `.pkg` that upgrades prior installs.
+- Canonical Direct installer is a standard `.pkg` that upgrades prior Direct installs.
 
 Free-pass strategy is locked:
 - Backend-authoritative allowlist only for Direct.
 - Production app must not grant free-pass from local file/env overrides.
+- The backend may keep a checked-in hard-coded allowlist file for friends-and-family testing.
+
+Direct billing strategy is locked:
+- verified email sign-in is required before purchase
+- new Direct purchases use a Worker-hosted pricing page plus Stripe Checkout Sessions
+- existing paid Direct subscribers use Stripe Billing Portal
+- remaining Direct trial time is converted into Stripe-supported trial settings during Checkout
 
 ## Required Build Outputs
 1. Xcode workspace/projects with two app targets/schemes:
 - `OfficeResumeMAS`
 - `OfficeResumeDirect`
-2. Shared core module for models, adapters, storage, restore engine, and entitlement abstraction.
+2. Shared core module for models, adapters, storage, restore engine, account/billing abstractions, and entitlement abstraction.
 3. Helper/login item process for monitoring and restore execution.
 4. XPC contract between menu app and helper.
-5. Cloudflare Worker backend for direct entitlement verification.
+5. Cloudflare Worker backend for direct auth + entitlement verification.
 6. Unit/integration tests covering key scenarios from specs.
 7. Direct packaging scripts producing `.pkg` install artifacts for upgrade-friendly installs.
 
@@ -63,10 +70,8 @@ Free-pass strategy is locked:
 6. Implement unsaved temp artifact flow (force-save, index, purge).
 7. Implement helper daemon with `NSWorkspace` lifecycle + `AXObserver` capture.
 8. Implement shared menu bar UI controls and helper command flow.
-9. Implement entitlement providers:
-- StoreKit 2 (MAS)
-- Stripe API client (Direct)
-10. Implement backend auth/webhook/entitlement endpoints.
+9. Implement shared account window and billing/account providers.
+10. Implement backend auth/webhook/entitlement/billing-entry/Checkout/Billing-Portal endpoints.
 11. Implement Direct `.pkg` packaging and update behavior.
 12. Add/adjust tests and run verification checklist from specs.
 
@@ -79,16 +84,17 @@ Free-pass strategy is locked:
 - Enforce post-trial inactive behavior: monitoring + restore disabled, history/status read-only.
 - Enforce 7-day offline entitlement grace.
 - Keep non-billing behavior unified across MAS and Direct.
+- Keep Debug-only shortcuts compile-time gated and runtime opt-in only.
 
 ## Acceptance Criteria
 Implementation is complete only when:
 1. Both targets build.
-2. Helper + menu bar + XPC flow works.
+2. Helper + menu bar + XPC/shared-IPC flow works.
 3. Accessibility-first capture is functioning.
 4. W/E/P restore works with dedupe.
 5. Outlook relaunch-only behavior works.
 6. OneNote remains unsupported without dedicated menu row.
-7. Billing flows exist for MAS and Direct channels.
+7. Billing/account flows exist for MAS and Direct.
 8. Direct `.pkg` installer flow works for install and update.
 9. Test matrix in `spec.md` is executed and results are reported.
 10. Component specs are updated whenever component code changes.
