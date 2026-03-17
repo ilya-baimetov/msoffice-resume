@@ -24,25 +24,18 @@ Because `site/wrangler.jsonc` points `assets.directory` at the current directory
 
 After deploy, Cloudflare will give you a `workers.dev` URL unless you attach a custom domain or route.
 
-## GitHub Auto Deploy
+## CI Validation
 
-This repo can deploy the site automatically from GitHub Actions.
+GitHub Actions does not deploy the site.
 
-Default solo flow:
+The repo keeps a CI dry-run check so `site/` changes are validated with:
 
-1. Work locally.
-2. Let local hooks and local review catch issues before push.
-3. Push to `main`.
-4. GitHub Actions deploys the Worker automatically if `site/` changed.
+```bash
+cd site
+npx wrangler deploy --dry-run
+```
 
-Required GitHub repository secrets:
-
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-
-Cloudflare's GitHub Actions documentation requires those two values because `wrangler login` is interactive and cannot run inside CI.
-
-If you want review to block deployment, protect `main` and require pull requests. Otherwise, the default solo path is direct push to `main` after local checks pass.
+Deployment is owned by Cloudflare, not GitHub.
 
 ## Local Preview
 
@@ -53,9 +46,9 @@ cd site
 npx wrangler dev
 ```
 
-## Optional Cloudflare-Native Auto Deploy
+## Cloudflare-Native Auto Deploy
 
-If you prefer Cloudflare-managed Git deploys instead of GitHub Actions, use **Workers Builds**:
+Use **Workers Builds** as the canonical deployment path:
 
 1. Go to `Workers & Pages` in the Cloudflare dashboard.
 2. Create a new `Worker`.
