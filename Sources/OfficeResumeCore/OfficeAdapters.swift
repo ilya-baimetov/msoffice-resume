@@ -15,29 +15,53 @@ public protocol DocumentOpening {
 }
 
 public struct NSAppleScriptExecutor: ScriptExecuting {
+    private static let lock = NSLock()
+    private static var compiledScripts: [String: NSAppleScript] = [:]
+
     public init() {}
 
     public func run(script: String) throws -> String {
-        var errorDict: NSDictionary?
-        guard let scriptObject = NSAppleScript(source: script) else {
-            throw OfficeAdapterError.scriptExecutionFailed
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
+        let scriptObject: NSAppleScript
+        if let cached = Self.compiledScripts[script] {
+            scriptObject = cached
+        } else {
+            guard let created = NSAppleScript(source: script) else {
+                throw OfficeAdapterError.scriptExecutionFailed
+            }
+
+            var compileError: NSDictionary?
+            let compiled = created.compileAndReturnError(&compileError)
+            if !compiled || compileError != nil {
+                throw Self.makeAppleScriptError(from: compileError)
+            }
+
+            Self.compiledScripts[script] = created
+            scriptObject = created
         }
 
+        var errorDict: NSDictionary?
         let descriptor = scriptObject.executeAndReturnError(&errorDict)
         if let errorDict {
-            let number = errorDict[NSAppleScript.errorNumber] as? Int ?? 1
-            let message = errorDict[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
-            throw NSError(
-                domain: "OfficeResumeAppleScript",
-                code: number,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "AppleScript error \(number): \(message)",
-                    "OfficeResumeAppleScriptDetails": errorDict,
-                ]
-            )
+            throw Self.makeAppleScriptError(from: errorDict)
         }
 
         return descriptor.stringValue ?? ""
+    }
+
+    private static func makeAppleScriptError(from errorDict: NSDictionary?) -> NSError {
+        let number = errorDict?[NSAppleScript.errorNumber] as? Int ?? 1
+        let message = errorDict?[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
+        return NSError(
+            domain: "OfficeResumeAppleScript",
+            code: number,
+            userInfo: [
+                NSLocalizedDescriptionKey: "AppleScript error \(number): \(message)",
+                "OfficeResumeAppleScriptDetails": errorDict ?? [:],
+            ]
+        )
     }
 }
 
@@ -668,13 +692,27 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
     ) async throws {
         var lastError: Error?
         let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app)
+        let openScript = openDocumentScript(path: path, app: app)
         for attempt in 0..<maxAttempts {
             do {
                 if let documentOpener {
-                    try await documentOpener.open(path: path, app: app)
-                } else {
-                    _ = try scriptExecutor.run(script: openDocumentScript(path: path, app: app))
+                    do {
+                        try await documentOpener.open(path: path, app: app)
+                        return
+                    } catch {
+                        lastError = error
+                        DebugLog.debug(
+                            "Document opener failed; falling back to Office scripting",
+                            metadata: [
+                                "app": app.rawValue,
+                                "path": path,
+                                "attempt": "\(attempt + 1)",
+                                "error": error.localizedDescription,
+                            ]
+                        )
+                    }
                 }
+                _ = try scriptExecutor.run(script: openScript)
                 return
             } catch {
                 lastError = error

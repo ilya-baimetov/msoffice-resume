@@ -114,6 +114,8 @@ final class HelperDaemonController {
     private var observedLaunchFirstSeenAt: [OfficeApp: Date] = [:]
     private var pendingCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
     private var warmupCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
+    private var captureInFlightApps: Set<OfficeApp> = []
+    private var captureBackoffUntil: [OfficeApp: Date] = [:]
     private var frontmostRefreshTask: Task<Void, Never>?
     private var frontmostRefreshApp: OfficeApp?
 
@@ -123,6 +125,7 @@ final class HelperDaemonController {
     private let warmupCaptureIntervalNanoseconds: UInt64 = 1_000_000_000
     private let warmupCaptureAttempts: Int = 5
     private let emptySnapshotProtectionWindow: TimeInterval = 60
+    private let captureFailureBackoff: TimeInterval = 10
 
     init(
         channel: StorageChannel? = nil,
@@ -538,12 +541,36 @@ final class HelperDaemonController {
             return
         }
 
+        if let blockedUntil = captureBackoffUntil[app], blockedUntil > Date() {
+            DebugLog.debug(
+                "Skipped capture during backoff window",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                ]
+            )
+            return
+        }
+
+        guard captureInFlightApps.insert(app).inserted else {
+            DebugLog.debug(
+                "Skipped overlapping capture",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                ]
+            )
+            return
+        }
+        defer { captureInFlightApps.remove(app) }
+
         guard let adapter = adapters[app], app != .onenote else {
             return
         }
 
         do {
             var snapshot = try await adapter.fetchState()
+            captureBackoffUntil[app] = nil
 
             if OfficeBundleRegistry.documentRestoreApps.contains(app) {
                 let artifacts = try await adapter.forceSaveUntitled(state: snapshot)
@@ -596,6 +623,9 @@ final class HelperDaemonController {
             let details = ["source": source, "documents": "\(snapshot.documents.count)"]
             try await snapshotStore.appendEvent(LifecycleEvent(app: app, type: .stateCaptured, timestamp: Date(), details: details))
         } catch {
+            captureBackoffUntil[app] = Date().addingTimeInterval(captureFailureBackoff)
+            stopWarmupCaptureIfNeeded(for: app)
+            stopFrontmostRefreshIfNeeded(for: app)
             DebugLog.error(
                 "State capture failed",
                 metadata: [

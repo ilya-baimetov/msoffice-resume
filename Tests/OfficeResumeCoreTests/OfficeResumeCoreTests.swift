@@ -646,20 +646,25 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testRestoreRetriesTransientDocumentOpenerFailure() async throws {
         var readinessAttempts = 0
         var openAttempts = 0
+        var scriptOpenAttempts = 0
 
         let executor = MockScriptExecutor { script in
             if script.contains(" to get name") {
                 readinessAttempts += 1
                 return "Microsoft PowerPoint"
             }
+            if script.contains(" to open ") {
+                scriptOpenAttempts += 1
+                if scriptOpenAttempts < 3 {
+                    throw NSError(domain: "test", code: 2, userInfo: [NSLocalizedDescriptionKey: "script open not ready"])
+                }
+            }
             return "ok"
         }
 
         let opener = MockDocumentOpener { _, _ in
             openAttempts += 1
-            if openAttempts < 3 {
-                throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "not ready"])
-            }
+            throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "not ready"])
         }
 
         let adapter = AppleScriptOfficeAdapter(
@@ -684,7 +689,57 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(result.failedPaths, [])
         XCTAssertEqual(result.restoredPaths, ["/tmp/retry-runtime.pptx"])
         XCTAssertEqual(openAttempts, 3)
+        XCTAssertEqual(scriptOpenAttempts, 3)
         XCTAssertGreaterThanOrEqual(readinessAttempts, 1)
+    }
+
+    func testRestoreFallsBackToOfficeScriptWhenDocumentOpenerFails() async throws {
+        var executedScripts: [String] = []
+        var openAttempts = 0
+
+        let executor = MockScriptExecutor { script in
+            executedScripts.append(script)
+            if script.contains(" to get name") {
+                return "Microsoft PowerPoint"
+            }
+            if script.contains(" to open ") {
+                return "ok"
+            }
+            return "ok"
+        }
+
+        let opener = MockDocumentOpener { _, _ in
+            openAttempts += 1
+            throw NSError(
+                domain: NSCocoaErrorDomain,
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "The application could not be launched because a miscellaneous error occurred."]
+            )
+        }
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .powerpoint,
+            scriptExecutor: executor,
+            documentOpener: opener,
+            snapshotStore: nil
+        )
+
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-runtime-fallback",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: "/tmp/fallback-runtime.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: []
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, ["/tmp/fallback-runtime.pptx"])
+        XCTAssertEqual(openAttempts, 1)
+        XCTAssertTrue(executedScripts.contains(where: { $0.contains(" to open POSIX file \"/tmp/fallback-runtime.pptx\"") }))
     }
 
     func testDirectAccountProviderMapsSubscribeBillingAction() async throws {
