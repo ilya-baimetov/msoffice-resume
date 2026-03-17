@@ -97,18 +97,35 @@ find_built_app_by_bundle_id() {
 sign_app_bundle() {
   local app_path="$1"
   local entitlements="$2"
+  local signing_identity="$3"
+
+  local sign_args=(
+    --force
+    --sign "$signing_identity"
+  )
+
+  if [[ -n "$entitlements" ]]; then
+    sign_args+=(
+      --entitlements "$entitlements"
+    )
+  fi
+
+  if [[ "$signing_identity" != "-" ]]; then
+    sign_args+=(
+      --timestamp
+      --options runtime
+    )
+  fi
 
   find "$app_path/Contents/Frameworks" -type f -perm -111 -print0 2>/dev/null | while IFS= read -r -d '' binary; do
-    codesign --force --timestamp --options runtime --sign "$DEVELOPER_ID_APPLICATION" "$binary"
+    if [[ "$signing_identity" == "-" ]]; then
+      codesign --force --sign - "$binary"
+    else
+      codesign --force --timestamp --options runtime --sign "$signing_identity" "$binary"
+    fi
   done
 
-  codesign \
-    --force \
-    --timestamp \
-    --options runtime \
-    --entitlements "$entitlements" \
-    --sign "$DEVELOPER_ID_APPLICATION" \
-    "$app_path"
+  codesign "${sign_args[@]}" "$app_path"
 
   codesign --verify --deep --strict --verbose=2 "$app_path"
 }
@@ -123,17 +140,20 @@ HELPER_BUILT_APP="$(find_built_app_by_bundle_id "com.pragprod.msofficeresume.hel
 cp -R "$DIRECT_BUILT_APP" "$DIRECT_APP"
 cp -R "$HELPER_BUILT_APP" "$HELPER_APP"
 
+APP_SIGNING_IDENTITY="-"
+APP_SIGNING_LABEL="ad hoc signing for stable local app identity"
+if [[ -n "$DEVELOPER_ID_APPLICATION" ]]; then
+  APP_SIGNING_IDENTITY="$DEVELOPER_ID_APPLICATION"
+  APP_SIGNING_LABEL="Developer ID Application certificate"
+fi
+
+echo "Signing app bundles with $APP_SIGNING_LABEL..."
+sign_app_bundle "$HELPER_APP" "$HELPER_ENTITLEMENTS" "$APP_SIGNING_IDENTITY"
+
 mkdir -p "$DIRECT_APP/Contents/Library/LoginItems"
 rm -rf "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app"
 cp -R "$HELPER_APP" "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app"
-
-if [[ -n "$DEVELOPER_ID_APPLICATION" ]]; then
-  echo "Signing app bundles with Developer ID Application certificate..."
-  sign_app_bundle "$DIRECT_APP/Contents/Library/LoginItems/OfficeResumeHelper.app" "$HELPER_ENTITLEMENTS"
-  sign_app_bundle "$DIRECT_APP" "$DIRECT_ENTITLEMENTS"
-else
-  echo "DEVELOPER_ID_APPLICATION not set; app bundles remain unsigned."
-fi
+sign_app_bundle "$DIRECT_APP" "$DIRECT_ENTITLEMENTS" "$APP_SIGNING_IDENTITY"
 
 rm -rf "$PAYLOAD_DIR"
 mkdir -p "$PAYLOAD_DIR/Applications"

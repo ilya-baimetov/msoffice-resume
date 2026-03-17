@@ -81,6 +81,7 @@ Installed paths:
 
 Notes:
 - Local Debug package is convenience-only and non-canonical for public distribution.
+- Local Debug package ad hoc signs the app/helper bundles so Accessibility/TCC sees a stable bundle identity without requiring an Apple Developer certificate.
 - Canonical Direct distribution artifact is the pkg produced by `./scripts/release-direct.sh`.
 - Runtime permissions are requested after install when the app/helper actually needs them.
 - Debug-only entitlement bypass remains available only when explicitly enabled at runtime in a Debug build.
@@ -95,6 +96,10 @@ Build Direct release artifacts:
 Outputs:
 - `dist/OfficeResume-direct-unsigned.pkg`
 - `dist/release-direct/` (staged app payload)
+
+Behavior without Developer ID signing:
+- app and helper bundles are ad hoc signed with their entitlements so local installs still have stable bundle identities for Accessibility/TCC
+- installer pkg remains unsigned until `DEVELOPER_ID_INSTALLER` is provided
 
 Optional signing/notarization env vars:
 - `DEVELOPER_ID_APPLICATION`
