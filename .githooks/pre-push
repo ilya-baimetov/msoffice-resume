@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+"$(git rev-parse --show-toplevel)/scripts/run-local-pre-push.sh"

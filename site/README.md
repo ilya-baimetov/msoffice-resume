@@ -28,11 +28,11 @@ After deploy, Cloudflare will give you a `workers.dev` URL unless you attach a c
 
 This repo can deploy the site automatically from GitHub Actions.
 
-Expected flow:
+Default solo flow:
 
-1. Open a pull request.
-2. Let CI and code review run.
-3. Merge to `main`.
+1. Work locally.
+2. Let local hooks and local review catch issues before push.
+3. Push to `main`.
 4. GitHub Actions deploys the Worker automatically if `site/` changed.
 
 Required GitHub repository secrets:
@@ -42,7 +42,7 @@ Required GitHub repository secrets:
 
 Cloudflare's GitHub Actions documentation requires those two values because `wrangler login` is interactive and cannot run inside CI.
 
-If you want review to block deployment, protect `main` and require pull requests. If you push directly to `main`, GitHub will deploy immediately after that push.
+If you want review to block deployment, protect `main` and require pull requests. Otherwise, the default solo path is direct push to `main` after local checks pass.
 
 ## Local Preview
 

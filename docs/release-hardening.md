@@ -87,7 +87,7 @@ Checked-in free-pass allowlist:
 
 ## 5. CI and Review Gates
 
-Required PR checks:
+Required PR checks when using a PR:
 
 - `docs-guardrails`
 - `ui-guardrails`
@@ -102,6 +102,7 @@ Review model:
 - GitHub Copilot review enabled and auto-requested on PRs.
 - Copilot guidance from `.github/copilot-instructions.md`.
 - Copilot is advisory; CI checks are merge gate.
+- Default solo path may skip PRs and rely on local hooks plus local review before push.
 
 ## 6. Release Validation Checklist
 

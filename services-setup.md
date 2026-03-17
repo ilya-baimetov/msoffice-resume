@@ -199,7 +199,7 @@ For signed/notarized release, set:
 3. Upload through App Store Connect.
 
 ## 12. GitHub Copilot Code Review Setup
-These are GitHub-side settings:
+These are GitHub-side settings when you want PR-based review:
 1. Enable GitHub Copilot and Copilot code review for your org/account.
 2. Enable repository access for Copilot on this repo.
 3. Configure rules to auto-request Copilot review on pull requests.
@@ -214,11 +214,13 @@ These are GitHub-side settings:
 - `backend-tests`
 
 Copilot review is advisory; CI checks remain merge gates.
+For the default solo workflow in this repo, local git hooks plus local review are the primary gate before push.
 
 ## 13. Recommended Operating Order
 1. Keep docs in sync first (`AGENTS.md` -> `PRD.md` -> `spec.md` -> `specs/*.md` -> `prompt.md`).
 2. Implement code changes.
-3. Run local checks + tests.
-4. Run/install local Debug package if needed.
-5. Open PR with scorecard and Copilot metadata.
-6. Merge only after CI is green.
+3. Install repo-managed hooks once: `./scripts/install-git-hooks.sh`.
+4. Use local review + local hooks while iterating.
+5. Run/install local Debug package if needed.
+6. Push only after local checks + tests pass.
+7. Use a PR only when you want GitHub/Copilot review or remote review history.

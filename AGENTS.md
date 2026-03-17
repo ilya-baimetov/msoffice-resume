@@ -137,9 +137,10 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 
 ## Copilot Review Expectations
 - Repository should include `.github/copilot-instructions.md` with risk-focused review guidance.
-- PRs should request or auto-include Copilot review and findings triage.
+- If a PR is used, it should request or auto-include Copilot review and findings triage.
 - Copilot review is advisory; static CI and regression checks remain merge gates.
 - Code/spec changes should be reviewed against the canonical order in this file.
+- Solo local workflow may rely on repo-managed git hooks plus local review before push; PRs remain optional for risky changes or when remote review history is desired.
 
 ## Testing and Acceptance Gate
 No feature is complete unless these pass:
@@ -169,4 +170,12 @@ No feature is complete unless these pass:
    - billing/entitlements/backend
    - packaging/CI
 4. Keep component specs synchronized with code changes in the same change set.
-5. Run docs consistency, builds, tests, and audit checks before merging.
+5. Install repo-managed git hooks on each workstation: `./scripts/install-git-hooks.sh`.
+6. Default solo workflow:
+   - edit
+   - local review
+   - commit
+   - repeat
+   - push only after local hooks and full checks pass
+7. Use a PR only when you want GitHub/Copilot review history or an extra merge gate.
+8. Run docs consistency, builds, tests, and audit checks before pushing or merging.

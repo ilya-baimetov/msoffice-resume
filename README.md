@@ -16,11 +16,48 @@ Canonical docs:
 ## Docs and Eval Utilities
 - Docs consistency checker: `./scripts/eval-docs-consistency.sh`
 - UI guardrails checker: `./scripts/eval-ui-guardrails.sh`
+- Install repo-managed git hooks: `./scripts/install-git-hooks.sh`
 - Methodology/docs:
   - `docs/vibe-coding-methodology.md`
   - `docs/eval-scorecard-template.md`
   - `docs/local-functional-checklist.md`
   - `docs/release-hardening.md`
+
+## Recommended Solo Workflow
+Default local workflow for this repo:
+
+1. edit
+2. local review
+3. commit
+4. repeat
+5. push to `main` only after local hooks and full checks pass
+
+PRs are optional. Use them only when you want GitHub-hosted review history, Copilot PR review comments, or an extra merge gate.
+
+Enable repo-managed hooks once per workstation:
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+Hook behavior:
+- `pre-commit`: fast guardrails and targeted lint checks
+- `pre-push`: full repo checks based on changed files since upstream
+
+Manual local review helper:
+
+```bash
+./scripts/review-local.sh staged
+./scripts/review-local.sh unstaged
+./scripts/review-local.sh last-commit
+```
+
+Manual local check helper:
+
+```bash
+./scripts/check-local.sh fast
+./scripts/check-local.sh full
+```
 
 ## Local Debug Build and Install
 No Apple Developer account is required for local Debug builds.
@@ -133,11 +170,14 @@ Workflow: `.github/workflows/ci.yml`
 Primary jobs:
 - `docs-guardrails`
 - `ui-guardrails`
+- `site-worker-dry-run`
 - `pr-scorecard-guardrail`
 - `spec-drift-guardrails`
 - `build-test-mas`
 - `build-test-direct`
 - `backend-tests`
+
+`pr-scorecard-guardrail` matters only when you choose to use a PR.
 
 ## Debug-Only Entitlement Bypass
 For local Debug builds only, an explicit bypass can be enabled from the Debug account UI/runtime opt-in path.
