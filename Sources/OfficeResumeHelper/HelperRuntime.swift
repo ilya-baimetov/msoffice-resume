@@ -988,7 +988,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
                     controller?.handleAccessibilityEvent(app: app, event: event, pid: pid)
                 }
             }
-            let trusted = accessibilityMonitor.start(prompt: true)
+            let trusted = accessibilityMonitor.start(prompt: false)
             controller.setAccessibilityTrusted(trusted)
             lastAccessibilityTrusted = trusted
             self.accessibilityMonitor = accessibilityMonitor

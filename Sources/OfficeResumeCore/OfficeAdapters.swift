@@ -117,6 +117,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
 
             if let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) {
                 _ = try? scriptExecutor.run(script: "tell application id \"\(bundleID)\" to activate")
+                try await waitUntilApplicationReady(bundleID: bundleID)
             }
 
             for doc in snapshot.documents {
@@ -599,8 +600,8 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
     private func openDocumentWithRetry(
         path: String,
         app: OfficeApp,
-        maxAttempts: Int = 5,
-        retryDelayNanoseconds: UInt64 = 250_000_000
+        maxAttempts: Int = 10,
+        retryDelayNanoseconds: UInt64 = 500_000_000
     ) async throws {
         var lastError: Error?
         for attempt in 0..<maxAttempts {
@@ -620,6 +621,35 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
             throw lastError
         }
         throw OfficeAdapterError.scriptExecutionFailed
+    }
+
+    private func waitUntilApplicationReady(
+        bundleID: String,
+        maxAttempts: Int = 20,
+        retryDelayNanoseconds: UInt64 = 250_000_000
+    ) async throws {
+        var lastError: Error?
+        for attempt in 0..<maxAttempts {
+            do {
+                _ = try scriptExecutor.run(script: readinessProbeScript(bundleID: bundleID))
+                return
+            } catch {
+                lastError = error
+                guard attempt < maxAttempts - 1 else {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            }
+        }
+
+        if let lastError {
+            throw lastError
+        }
+        throw OfficeAdapterError.scriptExecutionFailed
+    }
+
+    private func readinessProbeScript(bundleID: String) -> String {
+        "tell application id \"\(bundleID)\" to get name"
     }
 
     private static func defaultCloudStorageRoots(fileManager: FileManager) -> [URL] {

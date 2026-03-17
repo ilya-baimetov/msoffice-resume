@@ -420,6 +420,9 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testRestoreRetriesTransientOpenFailure() async throws {
         var openAttempts = 0
         let executor = MockScriptExecutor { script in
+            if script.contains(" to get name") {
+                return "PowerPoint"
+            }
             if script.contains(" to open ") {
                 openAttempts += 1
                 if openAttempts < 3 {
@@ -445,6 +448,49 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(result.failedPaths, [])
         XCTAssertEqual(result.restoredPaths, ["/tmp/retry.pptx"])
         XCTAssertEqual(openAttempts, 3)
+    }
+
+    func testRestoreWaitsForApplicationReadinessBeforeOpeningDocuments() async throws {
+        var readinessAttempts = 0
+        var openAttempts = 0
+
+        let executor = MockScriptExecutor { script in
+            if script.contains(" to get name") {
+                readinessAttempts += 1
+                if readinessAttempts < 4 {
+                    throw NSError(
+                        domain: "OfficeResumeAppleScript",
+                        code: -600,
+                        userInfo: [NSLocalizedDescriptionKey: "Application isn’t running"]
+                    )
+                }
+                return "Microsoft PowerPoint"
+            }
+
+            if script.contains(" to open ") {
+                openAttempts += 1
+            }
+
+            return "ok"
+        }
+
+        let adapter = AppleScriptOfficeAdapter(app: .powerpoint, scriptExecutor: executor, snapshotStore: nil)
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-ready",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: "/tmp/ready.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: []
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, ["/tmp/ready.pptx"])
+        XCTAssertEqual(readinessAttempts, 4)
+        XCTAssertEqual(openAttempts, 1)
     }
 
     func testPowerPointURLRestoreUsesOpenStringCommandWhenNoLocalMapping() async throws {
