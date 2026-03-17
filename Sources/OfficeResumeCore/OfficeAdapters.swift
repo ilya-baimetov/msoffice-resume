@@ -416,10 +416,7 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         return """
         set __or_output_lines to {}
         tell application id "\(bundleID)"
-            set __or_docs to {}
-            try
-                set __or_docs to \(collectionName) as list
-            end try
+            set __or_docs to \(collectionName) as list
 
             repeat with __or_doc in __or_docs
                 set __or_name to ""

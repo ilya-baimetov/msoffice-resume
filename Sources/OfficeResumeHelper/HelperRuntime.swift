@@ -113,12 +113,15 @@ final class HelperDaemonController {
     private var observedLaunchIDs: [OfficeApp: String] = [:]
     private var observedLaunchFirstSeenAt: [OfficeApp: Date] = [:]
     private var pendingCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
+    private var warmupCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
     private var frontmostRefreshTask: Task<Void, Never>?
     private var frontmostRefreshApp: OfficeApp?
 
     private let deactivateCaptureDebounceNanoseconds: UInt64 = 350_000_000
     private let powerAdapterRefreshNanoseconds: UInt64 = 1_000_000_000
     private let batteryRefreshNanoseconds: UInt64 = 10_000_000_000
+    private let warmupCaptureIntervalNanoseconds: UInt64 = 1_000_000_000
+    private let warmupCaptureAttempts: Int = 5
     private let emptySnapshotProtectionWindow: TimeInterval = 60
 
     init(
@@ -234,6 +237,7 @@ final class HelperDaemonController {
                     return
                 }
                 await captureAppState(app: app, source: "launch")
+                startWarmupCaptureIfNeeded(for: app, source: "launch-warmup")
                 await startFrontmostRefreshIfNeeded(for: app, reason: "launch")
             case .appActivated:
                 guard await canCaptureState() else {
@@ -249,6 +253,7 @@ final class HelperDaemonController {
                 scheduleCapture(app: app, source: "deactivate", after: deactivateCaptureDebounceNanoseconds)
             case .appTerminated:
                 stopFrontmostRefreshIfNeeded(for: app)
+                stopWarmupCaptureIfNeeded(for: app)
                 pendingCaptureTasks[app]?.cancel()
                 pendingCaptureTasks.removeValue(forKey: app)
             case .stateCaptured, .restoreStarted, .restoreSucceeded, .restoreFailed:
@@ -320,6 +325,7 @@ final class HelperDaemonController {
 
         if let app {
             let result = await performRestore(app: app, source: "manual")
+            startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
             await startFrontmostRefreshIfNeeded(for: app, reason: "manual-restore")
             return result
         }
@@ -331,6 +337,7 @@ final class HelperDaemonController {
             let result = await performRestore(app: app, source: "manual")
             restoredCount += result.restoredCount
             failedCount += result.failedCount
+            startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
         }
 
         await startFrontmostRefreshForCurrentFrontmostApp(reason: "manual-restore")
@@ -373,6 +380,7 @@ final class HelperDaemonController {
         }
 
         _ = await performRestore(app: app, source: "relaunch", runningApplication: runningApplication)
+        startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
         await startFrontmostRefreshIfNeeded(for: app, reason: "relaunch")
     }
 
@@ -551,6 +559,18 @@ final class HelperDaemonController {
                 }
             }
 
+            if source != "frontmost-refresh" || !snapshot.documents.isEmpty || !snapshot.windowsMeta.isEmpty {
+                DebugLog.debug(
+                    "Fetched app state",
+                    metadata: [
+                        "app": app.rawValue,
+                        "source": source,
+                        "documents": "\(snapshot.documents.count)",
+                        "windows": "\(snapshot.windowsMeta.count)",
+                    ]
+                )
+            }
+
             observeLaunch(app: app, launchID: snapshot.launchInstanceID)
 
             let current = try await snapshotStore.loadSnapshot(for: app)
@@ -623,6 +643,7 @@ final class HelperDaemonController {
             }
 
             _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
+            startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
         }
     }
 
@@ -846,6 +867,11 @@ final class HelperDaemonController {
             task.cancel()
         }
         pendingCaptureTasks.removeAll()
+
+        for task in warmupCaptureTasks.values {
+            task.cancel()
+        }
+        warmupCaptureTasks.removeAll()
     }
 
     private func scheduleCapture(app: OfficeApp, source: String, after nanoseconds: UInt64) {
@@ -872,6 +898,64 @@ final class HelperDaemonController {
         }
 
         pendingCaptureTasks[app] = task
+    }
+
+    private func startWarmupCaptureIfNeeded(for app: OfficeApp, source: String) {
+        guard OfficeBundleRegistry.documentRestoreApps.contains(app) else {
+            return
+        }
+
+        warmupCaptureTasks[app]?.cancel()
+
+        DebugLog.debug(
+            "Starting warm-up capture window",
+            metadata: [
+                "app": app.rawValue,
+                "source": source,
+                "attempts": "\(warmupCaptureAttempts)",
+            ]
+        )
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            defer { self.clearWarmupCaptureTaskIfNeeded(for: app) }
+
+            for _ in 0..<self.warmupCaptureAttempts {
+                do {
+                    try await Task.sleep(nanoseconds: self.warmupCaptureIntervalNanoseconds)
+                } catch {
+                    return
+                }
+
+                guard self.isAppRunning(app) else {
+                    return
+                }
+
+                guard await self.canCaptureState() else {
+                    return
+                }
+
+                await self.captureAppState(app: app, source: source)
+            }
+        }
+
+        warmupCaptureTasks[app] = task
+    }
+
+    private func stopWarmupCaptureIfNeeded(for app: OfficeApp) {
+        guard warmupCaptureTasks[app] != nil else {
+            return
+        }
+        DebugLog.debug("Stopping warm-up capture window", metadata: ["app": app.rawValue])
+        warmupCaptureTasks[app]?.cancel()
+        warmupCaptureTasks.removeValue(forKey: app)
+    }
+
+    private func clearWarmupCaptureTaskIfNeeded(for app: OfficeApp) {
+        warmupCaptureTasks[app] = nil
     }
 
     private func startFrontmostRefreshForCurrentFrontmostApp(reason: String) async {

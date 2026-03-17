@@ -164,6 +164,8 @@ XPC-facing API (helper service):
 ### 5.1 OfficeResumeHelper
 - Observe lifecycle events via `NSWorkspace` launch/terminate/activate/deactivate notifications.
 - Capture state on lifecycle boundaries while Office apps are alive/scriptable.
+- Run a short bounded warm-up capture window after launch or restore while the app remains running.
+- In sandboxed builds, Office scripting must be authorized through Apple Events entitlements that explicitly cover the Microsoft Office bundle IDs.
 - Run a power-aware refresh loop for the frontmost supported Office app only:
   - every `1s` on power adapter
   - every `10s` on battery
@@ -226,6 +228,7 @@ XPC-facing API (helper service):
   3. app deactivate
   4. helper startup reconciliation for already-running apps
   5. user session resign-active handling
+  6. bounded launch/restore warm-up retries while the app remains running
 - For the frontmost supported Office app only, run a bounded refresh loop:
   - `1s` interval on power adapter
   - `10s` interval on battery
@@ -234,7 +237,7 @@ XPC-facing API (helper service):
   1. Fetch current app state from adapter.
   2. Compare with latest stored snapshot.
   3. Persist on change.
-  4. Emit `stateCaptured` event with source `launch`, `activate`, `deactivate`, `startup`, `session`, or `frontmost-refresh`.
+  4. Emit `stateCaptured` event with source `launch`, `activate`, `deactivate`, `startup`, `session`, `frontmost-refresh`, `launch-warmup`, or `restore-warmup`.
 
 ## 7. Office Adapter Behavior
 

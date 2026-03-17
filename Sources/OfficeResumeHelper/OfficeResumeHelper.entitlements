@@ -6,6 +6,13 @@
 	<true/>
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.apple-events</key>
+	<array>
+		<string>com.microsoft.Word</string>
+		<string>com.microsoft.Excel</string>
+		<string>com.microsoft.Powerpoint</string>
+		<string>com.microsoft.Outlook</string>
+	</array>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>

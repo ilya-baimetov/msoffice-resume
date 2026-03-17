@@ -25,7 +25,7 @@ Shared business logic and contracts used by helper and menu/account UI.
 3. Persist shared status, restore markers, entitlements, debug logs, and folder-access bookmarks under the same root policy.
 4. Compute restore plans with dedupe + one-shot markers.
 5. Implement Office adapter scripting boundaries.
-6. Provide helpers for lifecycle-driven capture and bounded frontmost refresh decisions.
+6. Provide helpers for lifecycle-driven capture, bounded launch/restore warm-up retries, and bounded frontmost refresh decisions.
 7. Implement entitlement abstraction plus channel-specific providers.
 8. Implement shared account/billing abstractions and Direct session persistence.
 9. Persist and resolve security-scoped folder bookmarks for sandbox-safe restore.

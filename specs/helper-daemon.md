@@ -10,7 +10,7 @@ Background runtime that captures Office state and performs restore actions.
 ## Responsibilities
 1. Observe lifecycle events via `NSWorkspace` launch/terminate notifications.
 2. Observe lifecycle events via `NSWorkspace` activate/deactivate notifications.
-3. Trigger snapshot capture on lifecycle boundaries and the bounded frontmost refresh loop.
+3. Trigger snapshot capture on lifecycle boundaries, bounded launch/restore warm-up retries, and the bounded frontmost refresh loop.
 4. Trigger auto-restore on app launch using restore engine.
 5. Trigger startup restore pass for already-running Office apps when helper starts.
 6. Expose helper control/status over XPC service with shared IPC fallback.
@@ -29,10 +29,13 @@ Background runtime that captures Office state and performs restore actions.
   - append lifecycle event
   - attempt restore if eligible
   - capture state if monitoring is active
+  - run a short bounded warm-up capture window while the app remains running
   - start frontmost refresh loop if the launched app is frontmost
 - On app activate:
   - capture state if monitoring is active
   - start frontmost refresh loop for that app
+- After restore:
+  - run a short bounded warm-up capture window while the app remains running
 - On app deactivate:
   - stop any matching frontmost refresh loop immediately
   - do one final debounced capture while the app is still scriptable
@@ -41,6 +44,10 @@ Background runtime that captures Office state and performs restore actions.
   - run every `1s` on power adapter
   - run every `10s` on battery
   - persist only on state changes
+- During launch/restore warm-up:
+  - retry capture on a short bounded cadence while the app remains running
+  - tolerate transient activate/deactivate focus bounces during Office relaunch
+  - stop when the app terminates, the bounded retry window expires, or monitoring becomes inactive
 - On pause/inactive entitlement:
   - cancel pending capture/refresh tasks
   - stop new captures and auto-restore triggers
@@ -53,6 +60,7 @@ Background runtime that captures Office state and performs restore actions.
 - Publish daemon status JSON to shared IPC path.
 - Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`, `refresh-entitlement`, `quit-helper`) and route to controller handlers.
 - Before restoring document paths from protected locations, resolve matching folder bookmarks from shared storage and hold security-scoped access for the duration of the restore operation.
+- Helper sandbox entitlements must include Apple Events authorization for the supported Microsoft Office bundle IDs because the helper is the process that performs Office scripting.
 
 ## Reliability Requirements
 - Helper shutdown/restart pathways must not block the menu UI thread.

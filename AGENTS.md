@@ -28,7 +28,8 @@ When documents conflict, apply this order:
 - Capture model: lifecycle + app-scripting capture using `NSWorkspace` notifications and Office scripting while apps are alive/scriptable
 - Global restore policy: auto-restore on relaunch, one-shot per app launch instance
 - Duplicate guard: open only missing documents during restore
-- Capture refresh is limited to the frontmost supported Office app only:
+- Capture refresh uses a short bounded warm-up window after launch/restore plus the frontmost supported Office app loop:
+  - run short one-shot warm-up retries after app launch or restore while the app remains running
   - every `1s` on power adapter
   - every `10s` on battery
   - stop on app deactivate
