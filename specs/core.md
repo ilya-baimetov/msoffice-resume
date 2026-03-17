@@ -7,6 +7,7 @@ Shared business logic and contracts used by helper and menu/account UI.
 - `DomainModels.swift`
 - `Protocols.swift`
 - `Storage.swift`
+- `FolderAccess.swift`
 - `RestoreEngine.swift`
 - `OfficeAdapters.swift`
 - `Entitlements.swift`
@@ -21,22 +22,25 @@ Shared business logic and contracts used by helper and menu/account UI.
 ## Responsibilities
 1. Define stable shared models and protocol contracts.
 2. Persist snapshots/events/artifact index with unified app-group-first storage policy.
-3. Persist shared status, restore markers, entitlements, and debug logs under the same root policy.
+3. Persist shared status, restore markers, entitlements, debug logs, and folder-access bookmarks under the same root policy.
 4. Compute restore plans with dedupe + one-shot markers.
 5. Implement Office adapter scripting boundaries.
 6. Implement entitlement abstraction plus channel-specific providers.
 7. Implement shared account/billing abstractions and Direct session persistence.
-8. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
+8. Persist and resolve security-scoped folder bookmarks for sandbox-safe restore.
+9. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
 
 ## Model Requirements
 - `DocumentSnapshot.canonicalPath` is optional.
 - Decoding must transparently normalize prior `""`/placeholder path values to `nil`.
 - `AppSnapshot` does not embed restore-attempt state.
 - Restore markers live in dedicated storage.
+- Folder-access bookmark records must preserve stable root-path matching data plus bookmark payload.
 
 ## Adapter Requirements
 - W/E/P fetch document list using AppleScript.
 - W/E/P restore opens only snapshot paths passed in plan.
+- W/E/P restore must run inside any matching security-scoped folder access established by the helper.
 - W/E/P untitled handling attempts real force-save to `unsaved/` artifacts, then index persisted paths.
 - Outlook restore is activate/relaunch-only; no message-level reconstruction.
 - OneNote adapter remains unsupported.
@@ -55,6 +59,7 @@ Shared business logic and contracts used by helper and menu/account UI.
 - Keep non-billing behavior unified across MAS and Direct.
 - Keep runtime name/process behavior aligned across app targets.
 - Do not add channel-specific storage, restore, or UI behavior in core.
+- Keep the sandboxed folder-grant model identical across MAS and Direct.
 
 ## Forbidden Changes
 - Do not introduce remote telemetry.
@@ -66,8 +71,9 @@ Shared business logic and contracts used by helper and menu/account UI.
 ## Component Acceptance Checks
 - `OfficeResumeCoreTests` passes.
 - Storage root selection is app-group-first and deterministic.
-- Shared auxiliary files (status, restore markers, logs, entitlements) use the unified root.
+- Shared auxiliary files (status, restore markers, logs, entitlements, folder grants) use the unified root.
 - Unsaved force-save path stores only artifacts that actually exist.
 - Optional-path migration is backward-compatible with old snapshot data.
+- Folder bookmark persistence and path-to-root matching are deterministic.
 - XPC status DTO changes are reflected in menu UI consumers.
 - Shared IPC status and command fallback works across process boundary.

@@ -24,6 +24,7 @@
 		540350FE07DFAE6D6B66AC16 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5F99934357C4CB3FAFD96BA9 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7338E9FEED70CCDC995EEF7B /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFD048CD819C1A22D466DD6 /* Storage.swift */; };
+		951E440D5AF010FAD7B6C587 /* FolderAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCA4CCA4387D8085222E143 /* FolderAccess.swift */; };
 		A7010CC18F935820E84C6F2F /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA05774F987DC39DCAD5414 /* DebugLog.swift */; };
 		ADB2664FB099CC827FC262A2 /* OfficeAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */; };
 		B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */; };
@@ -118,6 +119,7 @@
 
 /* Begin PBXFileReference section */
 		10B1FA2326EDE0840C0B14A7 /* RuntimeConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfiguration.swift; sourceTree = "<group>"; };
+		2CCA4CCA4387D8085222E143 /* FolderAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAccess.swift; sourceTree = "<group>"; };
 		2D3787B498286957D8A0E58D /* OfficeResumeCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OfficeResumeCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3394719AC903493778BD1310 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeAdapters.swift; sourceTree = "<group>"; };
@@ -234,6 +236,7 @@
 				FCA05774F987DC39DCAD5414 /* DebugLog.swift */,
 				E04D7C467F3B367D4B38109B /* DomainModels.swift */,
 				41959A9EA7E71C4BB708F038 /* Entitlements.swift */,
+				2CCA4CCA4387D8085222E143 /* FolderAccess.swift */,
 				999A82A7F7CEAC45008ED799 /* HelperLauncher.swift */,
 				3A114F6EE038D657CE30A60D /* OfficeAdapters.swift */,
 				8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */,
@@ -408,7 +411,6 @@
 				};
 			};
 			buildConfigurationList = 7BA529D569EEA4F96AED9322 /* Build configuration list for PBXProject "OfficeResume" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -418,6 +420,7 @@
 			mainGroup = 641CB3A6289B37B9A85F09F6;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 396854B78CC2C31A1962D58D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -459,6 +462,7 @@
 				A7010CC18F935820E84C6F2F /* DebugLog.swift in Sources */,
 				DD43772042E81D0B72EE40E3 /* DomainModels.swift in Sources */,
 				CF761B8E267B9B038700CE37 /* Entitlements.swift in Sources */,
+				951E440D5AF010FAD7B6C587 /* FolderAccess.swift in Sources */,
 				1F7CE05DBCA49A183ED9F743 /* HelperLauncher.swift in Sources */,
 				ADB2664FB099CC827FC262A2 /* OfficeAdapters.swift in Sources */,
 				B06FAF310293DC54B201A357 /* OfficeBundleRegistry.swift in Sources */,

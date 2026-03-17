@@ -16,6 +16,7 @@ Background runtime that captures Office state and performs restore actions.
 6. Expose helper control/status over XPC service with shared IPC fallback.
 7. Enforce entitlement and pause gating on capture/restore paths.
 8. Keep behavior channel-neutral except entitlement/account provider implementation selected by channel.
+9. Resolve stored security-scoped folder bookmarks before path-based restore.
 
 ## Required Runtime Behavior
 - On helper startup:
@@ -46,11 +47,13 @@ Background runtime that captures Office state and performs restore actions.
 - Publish daemon status JSON to shared IPC path.
 - Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`, `refresh-entitlement`, `prompt-accessibility`, `quit-helper`) and route to controller handlers.
 - Prompt Accessibility from the helper process when remediation is requested.
+- Before restoring document paths from protected locations, resolve matching folder bookmarks from shared storage and hold security-scoped access for the duration of the restore operation.
 
 ## Reliability Requirements
 - Helper shutdown/restart pathways must not block the menu UI thread.
 - Startup retries must be bounded.
 - Helper status must be cleared/published correctly on start, shutdown, and permission transitions.
+- Missing or stale folder-access bookmarks must degrade into logged partial failures rather than helper crashes.
 
 ## Forbidden Changes
 - Do not perform UI logic in helper.
@@ -64,4 +67,5 @@ Background runtime that captures Office state and performs restore actions.
 - Inactive entitlement disables capture and restore triggers.
 - AX observer attach/detach behaves correctly across Office relaunches.
 - Toggling Accessibility permission while helper is running updates published status quickly.
+- Restoring documents from previously granted protected roots does not trigger repeated sandbox prompts.
 - Quit command cleanly terminates the helper.

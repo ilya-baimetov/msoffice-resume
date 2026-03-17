@@ -61,6 +61,7 @@ Office Resume restores continuity by capturing Office state in the background an
 Required actions:
 - `Pause Tracking` / `Resume Tracking`
 - `Restore Now`
+- `Advanced > Grant Folder Access…`
 - `Advanced > Clear Snapshot`
 - `Advanced > Open Debug Log in Console`
 - `Account…`
@@ -110,6 +111,7 @@ MAS:
   - `unsaved/`
 - Use the same app-group-or-debug-fallback root for logs, restore markers, and IPC status.
 - Allow dev-only fallback path for unsigned local builds when app-group container is unavailable.
+- Persist user-approved folder grants as security-scoped bookmarks under the shared root so restore can reopen files from protected locations without repeated prompts.
 
 ### FR-4 Untitled Document Handling
 - For Word/Excel/PowerPoint untitled docs, force-save to temporary artifacts.
@@ -133,6 +135,9 @@ MAS:
   - `Accessibility: OK` when helper trust is granted.
   - `Accessibility: click to fix` when helper trust is missing.
 - Clicking the Accessibility remediation row must prompt from the helper process and open System Settings.
+- `Advanced > Grant Folder Access…` must let the user approve one or more directory roots such as `Documents`, OneDrive, or iCloud Drive for persistent restore access.
+- Folder access is remembered per granted root via security-scoped bookmarks; repeated restore prompts for files under already-granted roots are a bug.
+- Installer-time approval for `Documents`, `Desktop`, `Downloads`, OneDrive, iCloud Drive, or similar protected locations is out of scope; the app must request those grants at runtime.
 
 ### FR-7 Entitlement and Gating
 - 14-day trial.
@@ -171,6 +176,7 @@ MAS:
 - Menu bar app and helper remain responsive under bursty Accessibility events.
 - Local logs only; no analytics telemetry.
 - Errors degrade gracefully and preserve core operation where possible.
+- App and helper remain sandboxed in MAS and Direct; persistent file access must be implemented with user-selected security-scoped bookmarks rather than sandbox removal.
 
 ## 9. Privacy and Data Handling
 - Store only operational state needed for restore.
@@ -214,6 +220,7 @@ MAS:
 9. Production Direct flow does not accept local free-pass or fake-session bypass inputs.
 10. Debug local flow exists without weakening Release behavior.
 11. Copilot review workflow documented and PR metadata captured.
+12. Reopening documents from already-granted protected roots does not reprompt on every restore.
 
 ## 13. Risks and Mitigations
 ### Risk 1: MAS automation review constraints

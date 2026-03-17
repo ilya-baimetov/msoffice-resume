@@ -20,6 +20,7 @@ Menu bar user interface and account surface for helper control and billing.
 5. Expose controls:
    - `Restore Now`
    - `Pause Tracking` / `Resume Tracking`
+   - `Advanced > Grant Folder Access…`
    - `Advanced > Clear Snapshot`
    - `Advanced > Open Debug Log in Console`
    - `Account…`
@@ -35,6 +36,8 @@ Menu bar user interface and account surface for helper control and billing.
 - Do not show a dedicated OneNote unsupported row/message.
 - Fetch or refresh status on app startup, menu open, file-watch/shared-status updates, and user actions.
 - Use bounded retry/backoff while establishing helper connectivity; no always-on 2-second polling loop.
+- `Advanced > Grant Folder Access…` opens a directory picker (`NSOpenPanel`) that allows one or more directory roots to be granted for persistent restore access.
+- Folder-grant UI is owned by the menu app; no helper UI is introduced.
 
 ## Account Window Behavior
 ### Direct
@@ -78,6 +81,7 @@ Menu bar user interface and account surface for helper control and billing.
 - Accessibility line shows `Accessibility: OK` when trusted.
 - Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
 - Accessibility line updates when permission is granted/revoked while app/helper are running.
+- `Advanced > Grant Folder Access…` persists selected directory roots for later restore use by the helper.
 - `Account…` opens the shared account window.
 - `Quit` terminates helper and menu app together.
 - Direct signed-in non-paid users see `Choose Plan…`, which opens the Worker-hosted pricing page.

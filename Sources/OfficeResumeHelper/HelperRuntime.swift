@@ -224,6 +224,7 @@ final class HelperDaemonController {
 
     private let stateStore: DaemonStateStore
     private let snapshotStore: SnapshotStore
+    private let folderAccessStore: FolderAccessStore
     private let restoreEngine: RestoreEngine
     private let entitlementProvider: EntitlementProvider
     private let adapters: [OfficeApp: OfficeAdapter]
@@ -244,11 +245,13 @@ final class HelperDaemonController {
         let distributionChannel = RuntimeConfiguration.distributionChannel(userDefaults: userDefaults)
         let resolvedChannel = channel ?? RuntimeConfiguration.storageChannel(for: distributionChannel)
         let snapshotStore = FileSnapshotStore(channel: resolvedChannel)
+        let folderAccessStore = FolderAccessStore()
         let markerStore = try FileRestoreMarkerStore()
         let entitlementStore = try EntitlementFileStore()
 
         self.stateStore = stateStore
         self.snapshotStore = snapshotStore
+        self.folderAccessStore = folderAccessStore
         self.restoreEngine = RestoreEngine(snapshotStore: snapshotStore, markerStore: markerStore)
         self.entitlementProvider = EntitlementProviderFactory.makeProvider(
             channel: distributionChannel,
@@ -540,6 +543,24 @@ final class HelperDaemonController {
                 documents: plan.documentsToOpen,
                 windowsMeta: []
             )
+
+            let accessSession: FolderAccessSession?
+            do {
+                accessSession = try await folderAccessStore.beginAccess(
+                    for: restoreSnapshot.documents.compactMap(\.canonicalPath)
+                )
+            } catch {
+                DebugLog.warning(
+                    "Folder access session could not be established before restore",
+                    metadata: [
+                        "app": app.rawValue,
+                        "source": source,
+                        "error": error.localizedDescription,
+                    ]
+                )
+                accessSession = nil
+            }
+            defer { accessSession?.end() }
 
             let restoreResult = try await adapter.restore(snapshot: restoreSnapshot)
             try await restoreEngine.markRestoreCompleted(app: app, launchInstanceID: launchID)

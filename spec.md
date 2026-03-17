@@ -85,6 +85,15 @@ struct LifecycleEvent: Codable {
     let details: [String: String]
 }
 
+struct FolderAccessGrant: Codable, Hashable {
+    let id: String
+    let displayName: String
+    let rootPath: String
+    let bookmarkData: Data
+    let createdAt: Date
+    let updatedAt: Date
+}
+
 struct EntitlementState: Codable {
     let isActive: Bool
     let plan: Plan
@@ -172,6 +181,7 @@ XPC-facing API (helper service):
   - Accessibility status/action
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
+  - `Advanced > Grant Folder Access…`
   - `Advanced > Clear Snapshot`
   - `Advanced > Open Debug Log in Console`
   - `Account…`
@@ -180,6 +190,7 @@ XPC-facing API (helper service):
 - Receive Direct auth callback URLs and hand them to the Direct account provider.
 - Start helper via `SMAppService` and sibling-launch fallback.
 - `Quit` must terminate both menu app and helper.
+- Own the sandboxed folder-grant UI (`NSOpenPanel`) and persist selected directory bookmarks into shared storage for helper consumption.
 
 ### 5.3 Core Storage + Engine
 - Snapshot storage, event log persistence, temp artifact indexing.
@@ -262,6 +273,7 @@ On Office app launch (and helper startup pass for already-running apps):
 Failure handling:
 - Continue after per-document errors.
 - Emit `restoreFailed` diagnostics for failed paths.
+- For document paths under already-granted roots, helper-held security-scoped access must be active during the restore operation.
 
 ## 9. Unsaved Temp Artifact Handling
 ### 9.1 Index Model
@@ -294,6 +306,7 @@ Purge orphan index entries pointing to missing files.
 ### 10.2 Shared auxiliary root (same app-group-or-debug-fallback root)
 - `ipc/daemon-status-v1.json`
 - `ipc/daemon-xpc-endpoint-v1.data`
+- `restore/folder-access-v1.json`
 - `restore/restore-markers-v1.json`
 - `logs/debug-v1.log`
 - `entitlements/entitlement-cache-v1.json`
@@ -341,6 +354,7 @@ Purge orphan index entries pointing to missing files.
   - fetch after user actions
   - file-watch or notification-driven refresh when shared status changes
   - bounded retry/backoff while establishing helper connectivity
+- Menu-owned `Grant Folder Access…` writes security-scoped directory bookmarks into the shared root; helper loads those bookmarks lazily during restore.
 
 ## 13. XPC Contract Details
 Helper status payload must include:
@@ -378,6 +392,8 @@ Direct `.pkg` rules:
 - App Sandbox enabled for MAS, Direct, and helper.
 - Application Group: `group.com.pragprod.msofficeresume`.
 - Login item registration via `SMAppService`.
+- Menu app targets require user-selected read/write entitlement to collect folder grants.
+- Menu app targets and helper require app-scope security-scoped bookmark entitlement so persistent folder access survives relaunch.
 - Direct target/helper require network client entitlement for backend communication.
 - Direct target registers a custom URL scheme for auth callback.
 - Keychain sharing/access must support menu app + helper session access in signed builds.
@@ -405,4 +421,5 @@ Direct `.pkg` rules:
 20. Debug-only entitlement bypass requires explicit runtime opt-in and is absent in Release behavior.
 21. Direct `.pkg` install/upgrade works and blocks MAS conflict.
 22. Debug log opens from the unified shared log location.
-22. Docs consistency, UI guardrails, spec-drift guardrails, Xcode builds/tests, backend lint/tests, and static analysis pass.
+23. Restoring files from already-granted protected roots does not reprompt on every restore.
+24. Docs consistency, UI guardrails, spec-drift guardrails, Xcode builds/tests, backend lint/tests, and static analysis pass.

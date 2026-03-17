@@ -15,6 +15,7 @@ This file defines cross-component interfaces and invariants.
 - `DocumentSnapshot`: `app`, `displayName`, `canonicalPath?`, `isSaved`, `isTempArtifact`, `capturedAt`
 - `AppSnapshot`: `app`, `launchInstanceID`, `capturedAt`, `documents`, `windowsMeta`
 - `LifecycleEvent`: `app`, `type`, `timestamp`, `details`
+- `FolderAccessGrant`: persistent security-scoped bookmark for one user-approved directory root
 - `EntitlementState`: `isActive`, `plan`, `validUntil`, `trialEndsAt`, `lastValidatedAt`
 - `BillingAction`: `kind` (`subscribe` or `manageSubscription`) and user-facing title
 - `AccountState`: signed-in email or `nil`, current entitlement snapshot, optional billing action, sign-in/sign-out availability flags, optional status message
@@ -53,6 +54,7 @@ Per Office app under unified root policy:
 Shared auxiliary files under the same root policy:
 - `ipc/daemon-status-v1.json`
 - `ipc/daemon-xpc-endpoint-v1.data`
+- `restore/folder-access-v1.json`
 - `restore/restore-markers-v1.json`
 - `logs/debug-v1.log`
 - `entitlements/entitlement-cache-v1.json`
@@ -75,6 +77,8 @@ Dev-only fallback root (unsigned local runs):
 - Only missing documents are reopened.
 - `nil`/missing canonical paths are never path-restored directly.
 - Per-document failures are tolerated; continue remaining restore operations.
+- Sandbox-safe restore for protected locations must use previously stored security-scoped folder bookmarks.
+- Documents under already-granted roots must not reprompt on every restore.
 
 ## Entitlement Invariants
 - 14-day trial, then paid plans (`$5/mo`, `$50/yr`).

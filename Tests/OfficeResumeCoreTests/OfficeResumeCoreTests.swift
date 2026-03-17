@@ -222,6 +222,47 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: artifactURL.path))
     }
 
+    func testFolderAccessStorePersistsGrantsAndPrefersDeepestMatchingRoot() async throws {
+        let tempRoot = makeTempDirectory(name: "folder-access")
+        let documentsURL = tempRoot.appendingPathComponent("Documents", isDirectory: true)
+        let projectURL = documentsURL.appendingPathComponent("Project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let store = FolderAccessStore(baseDirectoryOverride: tempRoot)
+        try await store.grantDirectories([documentsURL, projectURL])
+
+        let grants = try await store.loadGrants()
+        XCTAssertEqual(grants.count, 2)
+
+        let storedFile = tempRoot
+            .appendingPathComponent("restore", isDirectory: true)
+            .appendingPathComponent("folder-access-v1.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storedFile.path))
+
+        let documentPath = projectURL.appendingPathComponent("deck.pptx").path
+        let matchedGrant = FolderAccessStore.bestMatchingGrant(for: documentPath, in: grants)
+        XCTAssertEqual(matchedGrant?.rootPath, projectURL.standardizedFileURL.path)
+    }
+
+    func testFolderAccessStoreDoesNotCrossDirectoryBoundaries() async {
+        let grants = [
+            FolderAccessGrant(
+                id: "documents",
+                displayName: "Documents",
+                rootPath: "/Users/test/Documents",
+                bookmarkData: Data(),
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+        ]
+
+        let matchedGrant = FolderAccessStore.bestMatchingGrant(
+            for: "/Users/test/Documents Archive/file.docx",
+            in: grants
+        )
+        XCTAssertNil(matchedGrant)
+    }
+
     func testCachedEntitlementProviderIsInactiveWithoutCacheOrRemote() async throws {
         let store = try EntitlementFileStore(baseDirectory: makeTempDirectory(name: "inactive-entitlement"))
         let provider = makeIsolatedCachedProvider(store: store, now: Date.init)
