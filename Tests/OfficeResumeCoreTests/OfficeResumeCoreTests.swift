@@ -10,7 +10,6 @@ final class OfficeResumeCoreTests: XCTestCase {
             entitlementPlan: .yearly,
             entitlementValidUntil: Date(timeIntervalSince1970: 1_800_000_000),
             entitlementTrialEndsAt: nil,
-            accessibilityTrusted: true,
             latestSnapshotCapturedAt: [.word: Date(timeIntervalSince1970: 1_700_000_000)],
             unsupportedApps: [.onenote]
         )
@@ -21,11 +20,10 @@ final class OfficeResumeCoreTests: XCTestCase {
         let loaded = DaemonSharedIPC.loadStatus()
         XCTAssertNotNil(loaded)
         XCTAssertEqual(loaded?.helperRunning, true)
-        XCTAssertEqual(loaded?.accessibilityTrusted, true)
         XCTAssertEqual(loaded?.entitlementPlan, .yearly)
     }
 
-    func testDaemonStatusRoundTripIncludesAccessibilityState() throws {
+    func testDaemonStatusRoundTripIncludesSnapshotState() throws {
         let status = DaemonStatusDTO(
             isPaused: false,
             helperRunning: true,
@@ -33,14 +31,12 @@ final class OfficeResumeCoreTests: XCTestCase {
             entitlementPlan: .trial,
             entitlementValidUntil: Date(timeIntervalSince1970: 1_700_086_400),
             entitlementTrialEndsAt: Date(timeIntervalSince1970: 1_700_086_400),
-            accessibilityTrusted: true,
             latestSnapshotCapturedAt: [.word: Date(timeIntervalSince1970: 1_700_000_000)],
             unsupportedApps: [.onenote]
         )
 
         let data = try JSONEncoder().encode(status)
         let decoded = try JSONDecoder().decode(DaemonStatusDTO.self, from: data)
-        XCTAssertTrue(decoded.accessibilityTrusted)
         XCTAssertEqual(decoded.latestSnapshotCapturedAt[.word], status.latestSnapshotCapturedAt[.word])
     }
 

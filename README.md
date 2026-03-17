@@ -81,7 +81,7 @@ Installed paths:
 
 Notes:
 - Local Debug package is convenience-only and non-canonical for public distribution.
-- Local Debug package ad hoc signs the app/helper bundles so Accessibility/TCC sees a stable bundle identity without requiring an Apple Developer certificate.
+- Local Debug package ad hoc signs the app/helper bundles with their entitlements without requiring an Apple Developer certificate.
 - Canonical Direct distribution artifact is the pkg produced by `./scripts/release-direct.sh`.
 - Runtime permissions are requested after install when the app/helper actually needs them.
 - Debug-only entitlement bypass remains available only when explicitly enabled at runtime in a Debug build.
@@ -98,7 +98,7 @@ Outputs:
 - `dist/release-direct/` (staged app payload)
 
 Behavior without Developer ID signing:
-- app and helper bundles are ad hoc signed with their entitlements so local installs still have stable bundle identities for Accessibility/TCC
+- app and helper bundles are ad hoc signed with their entitlements for local/private installs
 - installer pkg remains unsigned until `DEVELOPER_ID_INSTALLER` is provided
 
 Optional signing/notarization env vars:
@@ -135,7 +135,7 @@ The repo baseline is Node 24+. CI uses Node 24, and older local Node versions ar
 ## Build Modes
 ### Debug local build
 - Works without production backend if you use Debug-only local shortcuts.
-- Suitable for local feature testing and Accessibility/restore verification.
+- Suitable for local feature testing and restore verification.
 
 ### ReleaseDirect
 - Intended for website distribution.

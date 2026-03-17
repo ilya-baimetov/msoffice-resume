@@ -33,8 +33,12 @@ v1 requirements:
 - Stripe + Cloudflare Worker + Resend for Direct
 
 Capture strategy is locked:
-- Accessibility (`AXObserver`) is the primary event interception mechanism.
-- Polling fallback is removed in v1.
+- `NSWorkspace` lifecycle notifications plus Office scripting are the primary capture mechanism.
+- Use capture while apps are alive/scriptable on launch, activate, deactivate, startup reconciliation, and session resign-active handling.
+- Use a bounded frontmost refresh loop only for supported Office apps:
+  - every `1s` on power adapter
+  - every `10s` on battery
+  - stop on deactivate
 
 Direct distribution strategy is locked:
 - Canonical Direct installer is a standard `.pkg` that upgrades prior Direct installs.
@@ -68,7 +72,7 @@ Direct billing strategy is locked:
 4. Implement Office adapters (W/E/P full, Outlook limited, OneNote unsupported).
 5. Implement restore engine with dedupe + one-shot launch marker.
 6. Implement unsaved temp artifact flow (force-save, index, purge).
-7. Implement helper daemon with `NSWorkspace` lifecycle + `AXObserver` capture.
+7. Implement helper daemon with `NSWorkspace` lifecycle capture and bounded frontmost refresh.
 8. Implement shared menu bar UI controls and helper command flow.
 9. Implement shared account window and billing/account providers.
 10. Implement backend auth/webhook/entitlement/billing-entry/Checkout/Billing-Portal endpoints.
@@ -80,7 +84,7 @@ Direct billing strategy is locked:
 - Do not add remote analytics telemetry.
 - Do not add OneNote restore in v1.
 - Keep restore policy global and auto-on relaunch.
-- Surface Accessibility permission status in UI and degrade gracefully when not granted.
+- Do not depend on Accessibility APIs or prompt for Accessibility permission.
 - Enforce post-trial inactive behavior: monitoring + restore disabled, history/status read-only.
 - Enforce 7-day offline entitlement grace.
 - Keep non-billing behavior unified across MAS and Direct.
@@ -90,7 +94,7 @@ Direct billing strategy is locked:
 Implementation is complete only when:
 1. Both targets build.
 2. Helper + menu bar + XPC/shared-IPC flow works.
-3. Accessibility-first capture is functioning.
+3. Lifecycle+scripting capture is functioning without Accessibility dependency.
 4. W/E/P restore works with dedupe.
 5. Outlook relaunch-only behavior works.
 6. OneNote remains unsupported without dedicated menu row.

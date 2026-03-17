@@ -27,12 +27,10 @@ Use this checklist to validate local behavior end-to-end.
 - Open menu.
 - Expected: no persistent helper-connection errors; actions enabled when entitlement is active.
 
-2. Accessibility permission status and recovery
-- Remove Office Resume/Helper from macOS Accessibility list.
+2. No Accessibility dependency
 - Relaunch Office Resume.
-- Expected: menu shows `Accessibility: click to fix`.
-- Click to open Accessibility settings and re-grant permission.
-- Expected: menu updates to `Accessibility: OK`.
+- Open menu.
+- Expected: no Accessibility status row is present and no Accessibility/TCC prompt is shown.
 
 3. Word restore (saved docs)
 - Launch Word.

@@ -84,17 +84,6 @@ private struct OfficeResumeMenuContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if model.status.accessibilityTrusted {
-                Text("Accessibility: OK")
-                    .foregroundStyle(.secondary)
-            } else {
-                Button("Accessibility: click to fix") {
-                    model.openAccessibilitySettings()
-                }
-            }
-
-            Divider()
-
             Button(model.status.isPaused ? "Resume Tracking" : "Pause Tracking") {
                 model.setPaused(!model.status.isPaused)
             }
@@ -275,7 +264,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         entitlementPlan: .none,
         entitlementValidUntil: nil,
         entitlementTrialEndsAt: nil,
-        accessibilityTrusted: false,
         latestSnapshotCapturedAt: [:],
         unsupportedApps: OfficeBundleRegistry.unsupportedApps
     )
@@ -406,17 +394,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     message: error.localizedDescription
                 )
             }
-        }
-    }
-
-    func openAccessibilitySettings() {
-        DaemonSharedIPC.postPromptAccessibility()
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
-            return
-        }
-        _ = NSWorkspace.shared.open(url)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self] in
-            self?.requestStatusRefresh(reason: "accessibility-settings")
         }
     }
 

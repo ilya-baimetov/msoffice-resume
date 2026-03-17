@@ -162,9 +162,12 @@ XPC-facing API (helper service):
 ## 5. Module Responsibilities
 
 ### 5.1 OfficeResumeHelper
-- Observe lifecycle events via `NSWorkspace` launch/terminate notifications.
-- Register `AXObserver` per running Office process.
-- Capture state on Accessibility events as primary trigger.
+- Observe lifecycle events via `NSWorkspace` launch/terminate/activate/deactivate notifications.
+- Capture state on lifecycle boundaries while Office apps are alive/scriptable.
+- Run a power-aware refresh loop for the frontmost supported Office app only:
+  - every `1s` on power adapter
+  - every `10s` on battery
+  - stop when the app deactivates
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
 - Execute startup restore pass for already-running Office apps.
@@ -178,7 +181,6 @@ XPC-facing API (helper service):
 - Present standard `MenuBarExtra` menu style with:
   - helper connection feedback
   - autostart status/action
-  - Accessibility status/action
   - `Pause Tracking` / `Resume Tracking`
   - `Restore Now`
   - `Advanced > Grant Folder Access…`
@@ -207,7 +209,8 @@ XPC-facing API (helper service):
 ## 6. Event Capture Model
 
 ### 6.1 Lifecycle Capture
-- Observe Office app launches/quits via `NSWorkspace`.
+- Observe Office app launches/terminations/activations/deactivations via `NSWorkspace`.
+- On helper startup and session resign-active transitions, reconcile currently running supported Office apps and capture state while they are still scriptable.
 - Bundle ID map:
   - `com.microsoft.Word`
   - `com.microsoft.Excel`
@@ -215,20 +218,23 @@ XPC-facing API (helper service):
   - `com.microsoft.Outlook`
   - `com.microsoft.onenote.mac`
 
-### 6.2 Accessibility Capture (Primary)
-- Require Accessibility trust (`AXIsProcessTrustedWithOptions` prompt at startup/remediation).
-- Refresh trust status periodically while helper runs to catch runtime permission changes.
-- On app launch, attach `AXObserver` and subscribe to:
-  - `kAXWindowCreatedNotification`
-  - `kAXUIElementDestroyedNotification`
-  - `kAXFocusedWindowChangedNotification`
-  - `kAXTitleChangedNotification`
-- Debounce per app (target 500-800ms).
-- On debounce fire:
+### 6.2 Lifecycle + Frontmost Refresh Capture
+- Never rely on app termination as the final capture point; by `didTerminate` Office state may already be unavailable.
+- Capture triggers:
+  1. app launch
+  2. app activate
+  3. app deactivate
+  4. helper startup reconciliation for already-running apps
+  5. user session resign-active handling
+- For the frontmost supported Office app only, run a bounded refresh loop:
+  - `1s` interval on power adapter
+  - `10s` interval on battery
+  - stop immediately once the app deactivates or terminates
+- On each capture cycle:
   1. Fetch current app state from adapter.
   2. Compare with latest stored snapshot.
   3. Persist on change.
-  4. Emit `stateCaptured` event source `ax`.
+  4. Emit `stateCaptured` event with source `launch`, `activate`, `deactivate`, `startup`, `session`, or `frontmost-refresh`.
 
 ## 7. Office Adapter Behavior
 
@@ -287,7 +293,7 @@ Failure handling:
 - last referenced snapshot launch ID
 
 ### 9.2 Force-save policy
-- Trigger during AX-capture cycle for W/E/P when unsaved docs detected.
+- Trigger during capture cycle for W/E/P when unsaved docs detected.
 - Save into `<stateRoot>/unsaved/<artifact-id>.<ext>`.
 - Persist/update index mapping.
 - Replace unsaved snapshot entries with artifact-backed paths when save succeeds.
@@ -345,7 +351,6 @@ Purge orphan index entries pointing to missing files.
   - restore now
   - clear snapshot
   - refresh entitlement cache/state
-  - prompt Accessibility permissions
   - helper quit
 - Menu treats helper as available when XPC is healthy or shared IPC fallback is healthy.
 - Menu refresh model:
@@ -361,7 +366,6 @@ Helper status payload must include:
 - pause state
 - helper running state
 - entitlement summary
-- Accessibility trust state
 - per-app latest snapshot timestamps
 - unsupported apps list
 
@@ -400,7 +404,7 @@ Direct `.pkg` rules:
 
 ## 16. Test Matrix
 1. Launch/quit detection for each Office app updates lifecycle log correctly.
-2. Accessibility-triggered capture updates snapshot diff correctly for W/E/P.
+2. Launch/activate/deactivate/frontmost-refresh capture updates snapshot diff correctly for W/E/P.
 3. Auto-restore on relaunch opens only missing docs and avoids duplicates.
 4. Startup restore pass covers already-running Office apps after login/reboot.
 5. One-shot marker prevents repeated restore attempts in the same launch instance.
@@ -408,7 +412,7 @@ Direct `.pkg` rules:
 7. Untitled artifact purge executes after artifact is no longer needed.
 8. Outlook limited mode relaunches app but does not attempt unreliable window/message reconstruction.
 9. OneNote remains unsupported and absent from dedicated menu messaging.
-10. Accessibility denial/grant/revoke updates status correctly while running.
+10. Runtime does not depend on Accessibility/TCC state and does not prompt for Accessibility access.
 11. Menu fallback transport works when XPC is temporarily unavailable.
 12. Direct request-link production path does not expose raw tokens.
 13. Direct debug-only request-link shortcut works only when explicit dev mode is enabled.

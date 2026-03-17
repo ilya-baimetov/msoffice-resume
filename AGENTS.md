@@ -25,10 +25,13 @@ When documents conflict, apply this order:
 - Platform: macOS 14+, Apple Silicon only
 - UX: menu bar first, mostly automatic, quiet operation with local log visibility
 - Startup: auto-start at login via helper (`SMAppService`)
-- Capture model: Accessibility-first event interception (`AXObserver`) is required in v1
+- Capture model: lifecycle + app-scripting capture using `NSWorkspace` notifications and Office scripting while apps are alive/scriptable
 - Global restore policy: auto-restore on relaunch, one-shot per app launch instance
 - Duplicate guard: open only missing documents during restore
-- Polling fallback is removed in v1; capture is Accessibility event-driven only
+- Capture refresh is limited to the frontmost supported Office app only:
+  - every `1s` on power adapter
+  - every `10s` on battery
+  - stop on app deactivate
 - Retention: latest snapshot only (+ minimal local events/logs)
 - Privacy: local logs only, no remote analytics
 - Trial/pricing: 14-day trial, then `$5/month` or `$50/year`
@@ -102,9 +105,10 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 - Prefer Swift, SwiftUI/AppKit, and native Apple frameworks.
 - Keep monitoring/restore logic in helper/shared core, not in UI layer.
 - Keep adapters per Office app isolated behind protocols.
-- Use `AXObserver`/Accessibility notifications as the primary signal source for document/window transitions.
+- Use `NSWorkspace` launch/terminate/activate/deactivate notifications plus Office scripting as the capture backbone.
+- Do not depend on Accessibility APIs or AX observers in v1.
 - Menu UI must use native `MenuBarExtra` menu style.
-- The menu stays lean: helper connection, autostart health, Accessibility health, pause/resume, restore now, advanced actions, account entry point, quit.
+- The menu stays lean: helper connection, autostart health, pause/resume, restore now, advanced actions, account entry point, quit.
 - Billing/account details live in a compact shared account window, not in persistent menu rows.
 - Keep MAS and Direct billing providers separated behind shared account/entitlement interfaces.
 - No remote telemetry in v1.
@@ -115,7 +119,7 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 - Menu bar app
 - Embedded helper/login item daemon model
 - XPC contract for settings/status/actions with shared IPC fallback
-- Accessibility permission onboarding/status and AX observer lifecycle management
+- Lifecycle monitoring and power-aware frontmost refresh management
 - Office adapters (Word/Excel/PowerPoint/Outlook + unsupported OneNote stub)
 - Snapshot persistence and restore engine
 - Shared account/billing UI surface
@@ -146,13 +150,13 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 No feature is complete unless these pass:
 
 1. Unit tests for snapshot diffing, restore dedupe, one-shot markers, optional-path handling, and entitlement grace logic.
-2. Integration tests for adapter parsing/execution boundaries and AX-triggered capture flow behavior.
+2. Integration tests for adapter parsing/execution boundaries and lifecycle-triggered capture flow behavior.
 3. Backend tests for Direct auth, trial persistence, billing entry/Checkout/Billing Portal behavior, and free-pass allowlist enforcement.
 4. Manual scenario checklist from `spec.md` test matrix.
 5. Verification that trial expiration disables monitoring and restore while preserving read-only status.
 6. Verification that OneNote remains unsupported.
 7. Verification that no remote analytics endpoints are invoked.
-8. Verification that behavior is correct with Accessibility both granted and denied.
+8. Verification that the runtime has no Accessibility/TCC dependency and does not prompt for Accessibility access.
 9. Verification that Direct pkg install upgrades previous Direct installs safely and blocks MAS/Direct conflict.
 10. Verification that production Direct flow does not accept client-side free-pass or fake-session bypass.
 11. Verification that Direct checkout requires verified sign-in and uses Worker-hosted Stripe Checkout Sessions.

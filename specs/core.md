@@ -25,10 +25,11 @@ Shared business logic and contracts used by helper and menu/account UI.
 3. Persist shared status, restore markers, entitlements, debug logs, and folder-access bookmarks under the same root policy.
 4. Compute restore plans with dedupe + one-shot markers.
 5. Implement Office adapter scripting boundaries.
-6. Implement entitlement abstraction plus channel-specific providers.
-7. Implement shared account/billing abstractions and Direct session persistence.
-8. Persist and resolve security-scoped folder bookmarks for sandbox-safe restore.
-9. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
+6. Provide helpers for lifecycle-driven capture and bounded frontmost refresh decisions.
+7. Implement entitlement abstraction plus channel-specific providers.
+8. Implement shared account/billing abstractions and Direct session persistence.
+9. Persist and resolve security-scoped folder bookmarks for sandbox-safe restore.
+10. Maintain XPC DTO compatibility and shared IPC fallback compatibility.
 
 ## Model Requirements
 - `DocumentSnapshot.canonicalPath` is optional.
@@ -60,11 +61,12 @@ Shared business logic and contracts used by helper and menu/account UI.
 - Keep runtime name/process behavior aligned across app targets.
 - Do not add channel-specific storage, restore, or UI behavior in core.
 - Keep the sandboxed folder-grant model identical across MAS and Direct.
+- Keep helper/menu shared status free of Accessibility/TCC state.
 
 ## Forbidden Changes
 - Do not introduce remote telemetry.
 - Do not add OneNote restore behavior.
-- Do not reintroduce polling-only restore/capture paths.
+- Do not reintroduce broad always-on polling-only capture paths.
 - Do not re-enable production local free-pass override paths.
 - Do not store production Direct sessions only in environment variables.
 

@@ -70,7 +70,7 @@ sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
 ### 3.3 Verify installed apps
 - `/Applications/Office Resume.app`
 - `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
-- both bundles are ad hoc signed so Accessibility/TCC sees stable bundle identifiers even without a Developer ID certificate
+- both bundles are ad hoc signed with their entitlements even without a Developer ID certificate
 
 ### 3.4 Enable local Debug entitlement/testing shortcuts
 - Use the Debug-only account UI/runtime opt-in inside a Debug build.
@@ -189,7 +189,7 @@ Outputs:
 - `dist/OfficeResume-direct-unsigned.pkg`
 - `dist/release-direct/` payload
 
-Without `DEVELOPER_ID_APPLICATION`, the script still ad hoc signs the app/helper bundles with their entitlements so local/private installs keep stable TCC identity. The pkg itself remains unsigned until `DEVELOPER_ID_INSTALLER` is provided.
+Without `DEVELOPER_ID_APPLICATION`, the script still ad hoc signs the app/helper bundles with their entitlements for local/private installs. The pkg itself remains unsigned until `DEVELOPER_ID_INSTALLER` is provided.
 
 For signed/notarized release, set:
 - `DEVELOPER_ID_APPLICATION`

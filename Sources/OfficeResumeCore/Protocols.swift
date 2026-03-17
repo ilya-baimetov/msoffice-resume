@@ -37,7 +37,6 @@ public struct DaemonStatusDTO: Codable {
     public let entitlementPlan: EntitlementState.Plan
     public let entitlementValidUntil: Date?
     public let entitlementTrialEndsAt: Date?
-    public let accessibilityTrusted: Bool
     public let latestSnapshotCapturedAt: [OfficeApp: Date]
     public let unsupportedApps: [OfficeApp]
 
@@ -48,7 +47,6 @@ public struct DaemonStatusDTO: Codable {
         entitlementPlan: EntitlementState.Plan,
         entitlementValidUntil: Date?,
         entitlementTrialEndsAt: Date?,
-        accessibilityTrusted: Bool,
         latestSnapshotCapturedAt: [OfficeApp: Date],
         unsupportedApps: [OfficeApp]
     ) {
@@ -58,7 +56,6 @@ public struct DaemonStatusDTO: Codable {
         self.entitlementPlan = entitlementPlan
         self.entitlementValidUntil = entitlementValidUntil
         self.entitlementTrialEndsAt = entitlementTrialEndsAt
-        self.accessibilityTrusted = accessibilityTrusted
         self.latestSnapshotCapturedAt = latestSnapshotCapturedAt
         self.unsupportedApps = unsupportedApps
     }

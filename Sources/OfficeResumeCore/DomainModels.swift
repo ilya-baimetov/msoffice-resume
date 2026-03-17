@@ -118,6 +118,8 @@ public struct AppSnapshot: Codable {
 
 public enum LifecycleEventType: String, Codable {
     case appLaunched
+    case appActivated
+    case appDeactivated
     case appTerminated
     case stateCaptured
     case restoreStarted

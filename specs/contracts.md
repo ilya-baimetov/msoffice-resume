@@ -6,8 +6,8 @@ This file defines cross-component interfaces and invariants.
 - Product: `Office Resume`
 - Bundle prefix: `com.pragprod.msofficeresume`
 - Platform: macOS 14+, Apple Silicon only
-- Capture strategy: Accessibility-first (`AXObserver`) + lifecycle notifications
-- Polling fallback: not used in v1
+- Capture strategy: lifecycle notifications + Office scripting while apps are alive/scriptable
+- Frontmost refresh: supported Office app only, `1s` on power adapter and `10s` on battery, stop on deactivate
 - Runtime behavior parity across MAS/Direct except billing/auth provider internals
 
 ## Shared Domain Types
@@ -34,13 +34,11 @@ Required shared IPC fallback commands:
 - `restore-now`
 - `clear-snapshot`
 - `refresh-entitlement`
-- `prompt-accessibility`
 - `quit-helper`
 
 Status payload must include:
 - `isPaused`, `helperRunning`
 - entitlement state summary
-- Accessibility trust state
 - per-app latest snapshot timestamps
 - unsupported apps list
 

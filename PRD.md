@@ -25,7 +25,7 @@ Office Resume restores continuity by capturing Office state in the background an
 - Cloud sync of snapshots across devices
 - Cross-channel purchase linking
 - Reverse-engineering Apple's private Resume binary format
-- Installer-time automatic Accessibility approval
+- Exact per-document open/close interception while an Office app remains frontmost for a long uninterrupted session
 
 ## 5. Scope and Support Matrix
 ### In Scope
@@ -47,7 +47,12 @@ Office Resume restores continuity by capturing Office state in the background an
 ## 6. Core User Experience
 ### 6.1 Background Behavior
 - App auto-starts at login.
-- Helper tracks Office launches/quits via `NSWorkspace` and document/window changes via `AXObserver` Accessibility notifications.
+- Helper tracks Office launches/terminations/activations/deactivations via `NSWorkspace`.
+- Helper captures Office document/window state via Office scripting while apps are alive and scriptable.
+- While a supported Office app is frontmost, helper runs a limited refresh loop:
+  - every `1s` on power adapter
+  - every `10s` on battery
+  - stop immediately when the app deactivates
 - On Office relaunch, restore is attempted automatically.
 - On helper startup, a restore pass is attempted for currently running Office apps (to cover login/reboot races where Office relaunches before helper is ready).
 
@@ -70,7 +75,6 @@ Required actions:
 Required display:
 - Helper connection status
 - Autostart health status and remediation action
-- Accessibility permission status and remediation action
 - Paused-state feedback when tracking is paused
 
 The main menu does not show entitlement details or recent-event lists in v1.
@@ -95,12 +99,19 @@ MAS:
 - Capture app launch/quit events for Word/Excel/PowerPoint/Outlook/OneNote.
 - Persist minimal event records locally.
 
-### FR-2 Document/Window Capture (Accessibility-First)
-- Use Accessibility notifications as primary trigger for open/close/focus/title transitions.
-- Word/Excel/PowerPoint: capture open documents with path/name/saved state via adapter fetch after AX-triggered capture.
+### FR-2 Document/Window Capture (Lifecycle + Scripting)
+- Capture state while Office apps are alive/scriptable.
+- Word/Excel/PowerPoint: capture open documents with path/name/saved state via adapter fetch on lifecycle boundaries and the limited frontmost refresh loop.
 - Outlook: capture lifecycle + window metadata only.
 - OneNote: no document capture and no restore.
-- If Accessibility permission is not granted, degrade gracefully with explicit UI status.
+- Do not depend on Accessibility permission or AX APIs.
+- Capture triggers:
+  - Office app launch
+  - Office app activate
+  - Office app deactivate
+  - helper startup reconciliation for already-running Office apps
+  - session resign-active handling
+- Do not rely on app quit notifications for the final snapshot; by quit time Office state may already be gone.
 
 ### FR-3 Snapshot Persistence
 - Maintain latest snapshot only per Office app.
@@ -126,18 +137,15 @@ MAS:
 - Apply one-shot marker per launch instance.
 - Log per-item success/failure locally.
 
-### FR-6 Autostart and Accessibility Visibility
+### FR-6 Autostart and Folder-Access Visibility
 - Menu must surface autostart status:
   - `Autostart: OK` when both main app and helper login-item registration are enabled.
   - `Autostart: click to fix` when registration is not healthy.
 - `Autostart: click to fix` opens Login Items settings.
-- Menu must surface Accessibility status:
-  - `Accessibility: OK` when helper trust is granted.
-  - `Accessibility: click to fix` when helper trust is missing.
-- Clicking the Accessibility remediation row must prompt from the helper process and open System Settings.
 - `Advanced > Grant Folder Access…` must let the user approve one or more directory roots such as `Documents`, OneDrive, or iCloud Drive for persistent restore access.
 - Folder access is remembered per granted root via security-scoped bookmarks; repeated restore prompts for files under already-granted roots are a bug.
 - Installer-time approval for `Documents`, `Desktop`, `Downloads`, OneDrive, iCloud Drive, or similar protected locations is out of scope; the app must request those grants at runtime.
+- No menu row or workflow should ask for Accessibility permission.
 
 ### FR-7 Entitlement and Gating
 - 14-day trial.
@@ -173,7 +181,7 @@ MAS:
 
 ## 8. Non-Functional Requirements
 - macOS 14+ only; Apple Silicon only.
-- Menu bar app and helper remain responsive under bursty Accessibility events.
+- Menu bar app and helper remain responsive under launch/activate/deactivate bursts and the bounded frontmost refresh loop.
 - Local logs only; no analytics telemetry.
 - Errors degrade gracefully and preserve core operation where possible.
 - App and helper remain sandboxed in MAS and Direct; persistent file access must be implemented with user-selected security-scoped bookmarks rather than sandbox removal.
@@ -212,7 +220,7 @@ MAS:
 1. Required menu actions implemented and functional.
 2. W/E/P document-level restore works for saved docs.
 3. Untitled force-save and restore lifecycle implemented.
-4. Accessibility-first capture works when granted; degraded behavior is clear when denied.
+4. Lifecycle+scripting capture works without any Accessibility dependency.
 5. Outlook relaunch-only behavior works.
 6. OneNote remains unsupported (no dedicated menu row).
 7. Billing/account flows exist for MAS and Direct.
@@ -221,6 +229,7 @@ MAS:
 10. Debug local flow exists without weakening Release behavior.
 11. Copilot review workflow documented and PR metadata captured.
 12. Reopening documents from already-granted protected roots does not reprompt on every restore.
+13. No Accessibility prompt or Accessibility-status UI remains in the product.
 
 ## 13. Risks and Mitigations
 ### Risk 1: MAS automation review constraints

@@ -14,10 +14,7 @@ Menu bar user interface and account surface for helper control and billing.
 3. Render autostart health exactly as:
    - `Autostart: OK` when main app + helper login item are enabled
    - `Autostart: click to fix` (opens Login Items settings) when not healthy
-4. Render Accessibility status exactly as:
-   - `Accessibility: OK` when trusted
-   - `Accessibility: click to fix` (prompts from helper and opens system settings) when not trusted
-5. Expose controls:
+4. Expose controls:
    - `Restore Now`
    - `Pause Tracking` / `Resume Tracking`
    - `Advanced > Grant Folder Access…`
@@ -34,6 +31,7 @@ Menu bar user interface and account surface for helper control and billing.
 - Do not show dedicated entitlement rows in the main menu.
 - Do not show recent-event lists in the main menu.
 - Do not show a dedicated OneNote unsupported row/message.
+- Do not show Accessibility status or Accessibility remediation UI.
 - Fetch or refresh status on app startup, menu open, file-watch/shared-status updates, and user actions.
 - Use bounded retry/backoff while establishing helper connectivity; no always-on 2-second polling loop.
 - `Advanced > Grant Folder Access…` opens a directory picker (`NSOpenPanel`) that allows one or more directory roots to be granted for persistent restore access.
@@ -78,9 +76,6 @@ Menu bar user interface and account surface for helper control and billing.
 - Controls invoke helper commands via XPC or fallback distributed notifications.
 - Autostart line shows `Autostart: OK` when main app + helper login-item registration are healthy.
 - Autostart line is clickable (`Autostart: click to fix`) when registration is not healthy.
-- Accessibility line shows `Accessibility: OK` when trusted.
-- Accessibility line is clickable (`Accessibility: click to fix`) when not trusted.
-- Accessibility line updates when permission is granted/revoked while app/helper are running.
 - `Advanced > Grant Folder Access…` persists selected directory roots for later restore use by the helper.
 - `Account…` opens the shared account window.
 - `Quit` terminates helper and menu app together.

@@ -1,13 +1,21 @@
 import AppKit
 import Foundation
+import IOKit.ps
 import OfficeResumeCore
 
 final class OfficeLifecycleMonitor {
-    private var observers: [NSObjectProtocol] = []
-    private let callback: (OfficeApp, LifecycleEventType, NSRunningApplication?) -> Void
+    typealias AppCallback = (OfficeApp, LifecycleEventType, NSRunningApplication?) -> Void
 
-    init(callback: @escaping (OfficeApp, LifecycleEventType, NSRunningApplication?) -> Void) {
-        self.callback = callback
+    private var observers: [NSObjectProtocol] = []
+    private let appCallback: AppCallback
+    private let sessionDidResignActiveCallback: () -> Void
+
+    init(
+        appCallback: @escaping AppCallback,
+        sessionDidResignActiveCallback: @escaping () -> Void
+    ) {
+        self.appCallback = appCallback
+        self.sessionDidResignActiveCallback = sessionDidResignActiveCallback
     }
 
     func start() {
@@ -21,6 +29,22 @@ final class OfficeLifecycleMonitor {
             self?.handle(notification: notification, type: .appLaunched)
         }
 
+        let activated = center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handle(notification: notification, type: .appActivated)
+        }
+
+        let deactivated = center.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handle(notification: notification, type: .appDeactivated)
+        }
+
         let terminated = center.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil,
@@ -29,7 +53,15 @@ final class OfficeLifecycleMonitor {
             self?.handle(notification: notification, type: .appTerminated)
         }
 
-        observers = [launched, terminated]
+        let sessionResigned = center.addObserver(
+            forName: NSWorkspace.sessionDidResignActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.sessionDidResignActiveCallback()
+        }
+
+        observers = [launched, activated, deactivated, terminated, sessionResigned]
     }
 
     func stop() {
@@ -48,171 +80,18 @@ final class OfficeLifecycleMonitor {
             return
         }
 
-        callback(mapped, type, runningApp)
+        appCallback(mapped, type, runningApp)
     }
 }
 
-final class OfficeAccessibilityMonitor {
-    typealias EventCallback = (OfficeApp, String, pid_t) -> Void
+private enum PowerSourceKind {
+    case powerAdapter
+    case battery
 
-    private final class ObserverEntry {
-        let app: OfficeApp
-        let pid: pid_t
-        let observer: AXObserver
-
-        init(app: OfficeApp, pid: pid_t, observer: AXObserver) {
-            self.app = app
-            self.pid = pid
-            self.observer = observer
-        }
-    }
-
-    private var observersByPID: [pid_t: ObserverEntry] = [:]
-    private var appByObserverID: [ObjectIdentifier: OfficeApp] = [:]
-    private var pidByObserverID: [ObjectIdentifier: pid_t] = [:]
-    private let callback: EventCallback
-    private(set) var isTrusted = false
-
-    init(callback: @escaping EventCallback) {
-        self.callback = callback
-    }
-
-    @discardableResult
-    func start(prompt: Bool = true) -> Bool {
-        let trusted = refreshTrust(prompt: prompt)
-        if !trusted {
-            DebugLog.warning("Accessibility permission is not granted; event interception will be limited")
-        }
-        return trusted
-    }
-
-    @discardableResult
-    func refreshTrust(prompt: Bool = false) -> Bool {
-        let trusted: Bool
-        if prompt {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            trusted = AXIsProcessTrustedWithOptions(options)
-        } else {
-            trusted = AXIsProcessTrusted()
-        }
-        isTrusted = trusted
-        return trusted
-    }
-
-    func stop() {
-        let pids = Array(observersByPID.keys)
-        for pid in pids {
-            detach(pid: pid)
-        }
-    }
-
-    func attach(app: OfficeApp, runningApplication: NSRunningApplication?) {
-        guard isTrusted else {
-            return
-        }
-        guard let runningApplication else {
-            return
-        }
-
-        let pid = runningApplication.processIdentifier
-        guard observersByPID[pid] == nil else {
-            return
-        }
-
-        var observerRef: AXObserver?
-        let createResult = AXObserverCreate(pid, Self.observerCallback, &observerRef)
-        guard createResult == .success, let observer = observerRef else {
-            DebugLog.warning(
-                "Failed to create AX observer",
-                metadata: [
-                    "app": app.rawValue,
-                    "pid": "\(pid)",
-                    "result": "\(createResult.rawValue)",
-                ]
-            )
-            return
-        }
-
-        let appElement = AXUIElementCreateApplication(pid)
-        let refcon = Unmanaged.passUnretained(self).toOpaque()
-        let notifications: [CFString] = [
-            kAXWindowCreatedNotification as CFString,
-            kAXUIElementDestroyedNotification as CFString,
-            kAXFocusedWindowChangedNotification as CFString,
-            kAXTitleChangedNotification as CFString,
-        ]
-
-        for notification in notifications {
-            let addResult = AXObserverAddNotification(observer, appElement, notification, refcon)
-            if addResult != .success && addResult != .notificationAlreadyRegistered {
-                DebugLog.warning(
-                    "Failed to register AX notification",
-                    metadata: [
-                        "app": app.rawValue,
-                        "pid": "\(pid)",
-                        "notification": notification as String,
-                        "result": "\(addResult.rawValue)",
-                    ]
-                )
-            }
-        }
-
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
-        observersByPID[pid] = ObserverEntry(app: app, pid: pid, observer: observer)
-        appByObserverID[ObjectIdentifier(observer)] = app
-        pidByObserverID[ObjectIdentifier(observer)] = pid
-        DebugLog.debug("AX observer attached", metadata: ["app": app.rawValue, "pid": "\(pid)"])
-    }
-
-    func detach(runningApplication: NSRunningApplication?) {
-        guard let runningApplication else {
-            return
-        }
-        detach(pid: runningApplication.processIdentifier)
-    }
-
-    private func detach(pid: pid_t) {
-        guard let entry = observersByPID.removeValue(forKey: pid) else {
-            return
-        }
-        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(entry.observer), .defaultMode)
-        appByObserverID.removeValue(forKey: ObjectIdentifier(entry.observer))
-        pidByObserverID.removeValue(forKey: ObjectIdentifier(entry.observer))
-        DebugLog.debug("AX observer detached", metadata: ["app": entry.app.rawValue, "pid": "\(pid)"])
-    }
-
-    private func handle(observer: AXObserver, notification: String) {
-        let observerID = ObjectIdentifier(observer)
-        guard
-            let app = appByObserverID[observerID],
-            let pid = pidByObserverID[observerID]
-        else {
-            return
-        }
-        callback(app, mapNotificationName(notification), pid)
-    }
-
-    private func mapNotificationName(_ notification: String) -> String {
-        switch notification {
-        case String(kAXWindowCreatedNotification):
-            return "windowCreated"
-        case String(kAXUIElementDestroyedNotification):
-            return "windowDestroyed"
-        case String(kAXFocusedWindowChangedNotification):
-            return "focusedWindowChanged"
-        case String(kAXTitleChangedNotification):
-            return "windowTitleChanged"
-        default:
-            return notification
-        }
-    }
-
-    private static let observerCallback: AXObserverCallback = { observer, _, notification, refcon in
-        guard let refcon else {
-            return
-        }
-        let monitor = Unmanaged<OfficeAccessibilityMonitor>.fromOpaque(refcon).takeUnretainedValue()
-        monitor.handle(observer: observer, notification: notification as String)
+    static func current() -> PowerSourceKind {
+        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+        let providedType = IOPSGetProvidingPowerSourceType(snapshot).takeUnretainedValue() as String
+        return providedType == kIOPSACPowerValue ? .powerAdapter : .battery
     }
 }
 
@@ -233,8 +112,13 @@ final class HelperDaemonController {
     private var isPaused: Bool
     private var observedLaunchIDs: [OfficeApp: String] = [:]
     private var observedLaunchFirstSeenAt: [OfficeApp: Date] = [:]
-    private var pendingAXCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
-    private let accessibilityDebounceNanoseconds: UInt64 = 700_000_000
+    private var pendingCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
+    private var frontmostRefreshTask: Task<Void, Never>?
+    private var frontmostRefreshApp: OfficeApp?
+
+    private let deactivateCaptureDebounceNanoseconds: UInt64 = 350_000_000
+    private let powerAdapterRefreshNanoseconds: UInt64 = 1_000_000_000
+    private let batteryRefreshNanoseconds: UInt64 = 10_000_000_000
     private let emptySnapshotProtectionWindow: TimeInterval = 60
 
     init(
@@ -278,20 +162,19 @@ final class HelperDaemonController {
     func start() {
         DebugLog.info("Helper daemon starting")
 
-        Task {
+        Task { @MainActor in
             await refreshEntitlementStatus()
             await syncSnapshotTimestamps()
             await restoreRunningAppsAtStartup()
             await captureRunningAppsAtStartup()
+            await startFrontmostRefreshForCurrentFrontmostApp(reason: "startup")
         }
     }
 
     func stop() {
         DebugLog.info("Helper daemon stopping")
-        for task in pendingAXCaptureTasks.values {
-            task.cancel()
-        }
-        pendingAXCaptureTasks.removeAll()
+        cancelPendingCaptures()
+        stopFrontmostRefresh()
         stateStore.setHelperRunning(false)
         publishStatus()
     }
@@ -306,7 +189,6 @@ final class HelperDaemonController {
                     entitlementPlan: .none,
                     entitlementValidUntil: nil,
                     entitlementTrialEndsAt: nil,
-                    accessibilityTrusted: false,
                     latestSnapshotCapturedAt: [:],
                     unsupportedApps: OfficeBundleRegistry.unsupportedApps
                 )
@@ -334,27 +216,61 @@ final class HelperDaemonController {
             ]
         )
 
-        Task {
+        Task { @MainActor in
             let event = LifecycleEvent(app: app, type: type, timestamp: Date(), details: details)
             try? await snapshotStore.appendEvent(event)
 
-            if type == .appLaunched {
+            guard app != .onenote else {
+                if type == .appTerminated || type == .appDeactivated {
+                    stopFrontmostRefreshIfNeeded(for: app)
+                }
+                return
+            }
+
+            switch type {
+            case .appLaunched:
                 await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
                 guard await canCaptureState() else {
                     return
                 }
                 await captureAppState(app: app, source: "launch")
+                await startFrontmostRefreshIfNeeded(for: app, reason: "launch")
+            case .appActivated:
+                guard await canCaptureState() else {
+                    return
+                }
+                await captureAppState(app: app, source: "activate")
+                await startFrontmostRefreshIfNeeded(for: app, reason: "activate")
+            case .appDeactivated:
+                stopFrontmostRefreshIfNeeded(for: app)
+                guard await canCaptureState() else {
+                    return
+                }
+                scheduleCapture(app: app, source: "deactivate", after: deactivateCaptureDebounceNanoseconds)
+            case .appTerminated:
+                stopFrontmostRefreshIfNeeded(for: app)
+                pendingCaptureTasks[app]?.cancel()
+                pendingCaptureTasks.removeValue(forKey: app)
+            case .stateCaptured, .restoreStarted, .restoreSucceeded, .restoreFailed:
+                break
             }
         }
     }
 
-    func setAccessibilityTrusted(_ trusted: Bool) {
-        stateStore.setAccessibilityTrusted(trusted)
-        publishStatus()
-        DebugLog.info(
-            "Accessibility permission state updated",
-            metadata: ["trusted": trusted ? "true" : "false"]
-        )
+    func handleSessionDidResignActive() {
+        Task { @MainActor in
+            stopFrontmostRefresh()
+            guard await canCaptureState() else {
+                return
+            }
+
+            for app in supportedCaptureApps() {
+                guard isAppRunning(app) else {
+                    continue
+                }
+                await captureAppState(app: app, source: "session")
+            }
+        }
     }
 
     func handleCommandSetPaused(_ paused: Bool) async {
@@ -375,41 +291,6 @@ final class HelperDaemonController {
         await refreshEntitlementStatus()
     }
 
-    func handleAccessibilityEvent(app: OfficeApp, event: String, pid: pid_t) {
-        guard app != .onenote else {
-            return
-        }
-
-        let source = "ax:\(event)"
-        DebugLog.debug(
-            "Accessibility event captured",
-            metadata: ["app": app.rawValue, "event": event, "pid": "\(pid)"]
-        )
-
-        if let existing = pendingAXCaptureTasks[app] {
-            existing.cancel()
-        }
-
-        let task = Task { [weak self] in
-            guard let self else {
-                return
-            }
-            guard await self.canCaptureState() else {
-                return
-            }
-            do {
-                try await Task.sleep(nanoseconds: self.accessibilityDebounceNanoseconds)
-            } catch {
-                return
-            }
-            guard await self.canCaptureState() else {
-                return
-            }
-            await self.captureAppState(app: app, source: source)
-        }
-        pendingAXCaptureTasks[app] = task
-    }
-
     private func status() -> DaemonStatusDTO {
         stateStore.currentStatus()
     }
@@ -418,10 +299,14 @@ final class HelperDaemonController {
         isPaused = paused
         userDefaults.set(paused, forKey: DefaultsKey.isPaused)
         if paused {
-            cancelPendingAccessibilityCaptures()
+            cancelPendingCaptures()
+            stopFrontmostRefresh()
         }
         let ok = stateStore.setPaused(paused)
         publishStatus()
+        if !paused {
+            await startFrontmostRefreshForCurrentFrontmostApp(reason: "resume")
+        }
         DebugLog.info("Pause state updated", metadata: ["paused": paused ? "true" : "false", "ok": ok ? "true" : "false"])
         return ok
     }
@@ -434,7 +319,9 @@ final class HelperDaemonController {
         }
 
         if let app {
-            return await performRestore(app: app, source: "manual")
+            let result = await performRestore(app: app, source: "manual")
+            await startFrontmostRefreshIfNeeded(for: app, reason: "manual-restore")
+            return result
         }
 
         var restoredCount = 0
@@ -445,6 +332,8 @@ final class HelperDaemonController {
             restoredCount += result.restoredCount
             failedCount += result.failedCount
         }
+
+        await startFrontmostRefreshForCurrentFrontmostApp(reason: "manual-restore")
 
         return RestoreCommandResultDTO(
             succeeded: failedCount == 0,
@@ -484,6 +373,7 @@ final class HelperDaemonController {
         }
 
         _ = await performRestore(app: app, source: "relaunch", runningApplication: runningApplication)
+        await startFrontmostRefreshIfNeeded(for: app, reason: "relaunch")
     }
 
     private func performRestore(
@@ -634,13 +524,13 @@ final class HelperDaemonController {
     }
 
     private func captureAppState(app: OfficeApp, source: String) async {
-        pendingAXCaptureTasks[app] = nil
+        pendingCaptureTasks[app] = nil
 
         guard await canCaptureState() else {
             return
         }
 
-        guard let adapter = adapters[app] else {
+        guard let adapter = adapters[app], app != .onenote else {
             return
         }
 
@@ -710,14 +600,11 @@ final class HelperDaemonController {
             return
         }
 
-        for app in OfficeBundleRegistry.automaticRestoreApps {
-            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+        for app in supportedCaptureApps() {
+            guard isAppRunning(app) else {
                 continue
             }
-            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            if !running.isEmpty {
-                await captureAppState(app: app, source: "startup")
-            }
+            await captureAppState(app: app, source: "startup")
         }
     }
 
@@ -731,12 +618,7 @@ final class HelperDaemonController {
         }
 
         for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
-            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
-                continue
-            }
-
-            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            guard let runningApplication = running.first else {
+            guard let runningApplication = runningApplication(for: app) else {
                 continue
             }
 
@@ -766,7 +648,10 @@ final class HelperDaemonController {
             stateStore.setEntitlementState(state)
             publishStatus()
             if !state.isActive {
-                cancelPendingAccessibilityCaptures()
+                cancelPendingCaptures()
+                stopFrontmostRefresh()
+            } else if !isPaused {
+                await startFrontmostRefreshForCurrentFrontmostApp(reason: "entitlement-refresh")
             }
             DebugLog.debug(
                 "Entitlement refreshed",
@@ -780,7 +665,8 @@ final class HelperDaemonController {
             stateStore.setEntitlementState(state)
             publishStatus()
             if !state.isActive {
-                cancelPendingAccessibilityCaptures()
+                cancelPendingCaptures()
+                stopFrontmostRefresh()
             }
             DebugLog.warning(
                 "Entitlement refresh failed; using current state",
@@ -918,20 +804,16 @@ final class HelperDaemonController {
         return trimmed
     }
 
-    private func launchInstanceID(for app: OfficeApp, runningApplication: NSRunningApplication?) -> String {
-        if let runningApplication {
-            return makeLaunchID(for: runningApplication)
+    private func launchInstanceID(for app: OfficeApp, runningApplication observedRunningApplication: NSRunningApplication?) -> String {
+        if let observedRunningApplication {
+            return makeLaunchID(for: observedRunningApplication)
         }
 
-        guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+        guard let currentRunningApplication = runningApplication(for: app) else {
             return "unknown"
         }
 
-        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-            return makeLaunchID(for: app)
-        }
-
-        return "unknown"
+        return makeLaunchID(for: currentRunningApplication)
     }
 
     private func makeLaunchID(for app: NSRunningApplication) -> String {
@@ -947,11 +829,156 @@ final class HelperDaemonController {
         return await entitlementProvider.canMonitor()
     }
 
-    private func cancelPendingAccessibilityCaptures() {
-        for task in pendingAXCaptureTasks.values {
+    private func cancelPendingCaptures() {
+        for task in pendingCaptureTasks.values {
             task.cancel()
         }
-        pendingAXCaptureTasks.removeAll()
+        pendingCaptureTasks.removeAll()
+    }
+
+    private func scheduleCapture(app: OfficeApp, source: String, after nanoseconds: UInt64) {
+        pendingCaptureTasks[app]?.cancel()
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            if nanoseconds > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: nanoseconds)
+                } catch {
+                    return
+                }
+            }
+
+            guard await self.canCaptureState() else {
+                return
+            }
+
+            await self.captureAppState(app: app, source: source)
+        }
+
+        pendingCaptureTasks[app] = task
+    }
+
+    private func startFrontmostRefreshForCurrentFrontmostApp(reason: String) async {
+        guard let app = frontmostSupportedApp() else {
+            stopFrontmostRefresh()
+            return
+        }
+
+        await startFrontmostRefreshIfNeeded(for: app, reason: reason)
+    }
+
+    private func startFrontmostRefreshIfNeeded(for app: OfficeApp, reason: String) async {
+        guard supportedCaptureApps().contains(app) else {
+            return
+        }
+        guard await canCaptureState() else {
+            return
+        }
+        guard isAppFrontmost(app), isAppRunning(app) else {
+            return
+        }
+        guard frontmostRefreshApp != app || frontmostRefreshTask == nil else {
+            return
+        }
+
+        stopFrontmostRefresh()
+        frontmostRefreshApp = app
+
+        DebugLog.debug(
+            "Starting frontmost refresh loop",
+            metadata: ["app": app.rawValue, "reason": reason]
+        )
+
+        frontmostRefreshTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            while !Task.isCancelled {
+                let interval = self.frontmostRefreshInterval()
+                do {
+                    try await Task.sleep(nanoseconds: interval)
+                } catch {
+                    break
+                }
+
+                guard await self.canCaptureState() else {
+                    break
+                }
+
+                guard self.isAppFrontmost(app), self.isAppRunning(app) else {
+                    break
+                }
+
+                await self.captureAppState(app: app, source: "frontmost-refresh")
+            }
+
+            self.clearFrontmostRefreshStateIfNeeded(for: app)
+        }
+    }
+
+    private func stopFrontmostRefreshIfNeeded(for app: OfficeApp) {
+        guard frontmostRefreshApp == app else {
+            return
+        }
+        stopFrontmostRefresh()
+    }
+
+    private func stopFrontmostRefresh() {
+        if let app = frontmostRefreshApp {
+            DebugLog.debug("Stopping frontmost refresh loop", metadata: ["app": app.rawValue])
+        }
+        frontmostRefreshTask?.cancel()
+        frontmostRefreshTask = nil
+        frontmostRefreshApp = nil
+    }
+
+    private func clearFrontmostRefreshStateIfNeeded(for app: OfficeApp) {
+        guard frontmostRefreshApp == app else {
+            return
+        }
+        frontmostRefreshTask = nil
+        frontmostRefreshApp = nil
+    }
+
+    private func frontmostRefreshInterval() -> UInt64 {
+        switch PowerSourceKind.current() {
+        case .powerAdapter:
+            return powerAdapterRefreshNanoseconds
+        case .battery:
+            return batteryRefreshNanoseconds
+        }
+    }
+
+    private func supportedCaptureApps() -> [OfficeApp] {
+        OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps
+    }
+
+    private func isAppFrontmost(_ app: OfficeApp) -> Bool {
+        guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+            return false
+        }
+        return NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
+    }
+
+    private func isAppRunning(_ app: OfficeApp) -> Bool {
+        runningApplication(for: app) != nil
+    }
+
+    private func runningApplication(for app: OfficeApp) -> NSRunningApplication? {
+        guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
+            return nil
+        }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+    }
+
+    private func frontmostSupportedApp() -> OfficeApp? {
+        OfficeBundleRegistry.app(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+            .flatMap { supportedCaptureApps().contains($0) ? $0 : nil }
     }
 
     private func publishStatus() {
@@ -962,11 +989,8 @@ final class HelperDaemonController {
 final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private var host: DaemonListenerHost?
     private var monitor: OfficeLifecycleMonitor?
-    private var accessibilityMonitor: OfficeAccessibilityMonitor?
     private var controller: HelperDaemonController?
     private var commandObservers: [NSObjectProtocol] = []
-    private var accessibilityTrustTimer: Timer?
-    private var lastAccessibilityTrusted: Bool?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -983,36 +1007,18 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             host.resume()
             self.host = host
 
-            let accessibilityMonitor = OfficeAccessibilityMonitor { [weak controller] app, event, pid in
-                Task { @MainActor in
-                    controller?.handleAccessibilityEvent(app: app, event: event, pid: pid)
-                }
-            }
-            let trusted = accessibilityMonitor.start(prompt: false)
-            controller.setAccessibilityTrusted(trusted)
-            lastAccessibilityTrusted = trusted
-            self.accessibilityMonitor = accessibilityMonitor
-
-            attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
-            startAccessibilityTrustRefresh(accessibilityMonitor: accessibilityMonitor, controller: controller)
-
-            let monitor = OfficeLifecycleMonitor { [weak controller, weak accessibilityMonitor] app, type, runningApplication in
-                Task { @MainActor in
-                    if let accessibilityMonitor {
-                        let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
-                        controller?.setAccessibilityTrusted(trustedNow)
-                        if !trustedNow {
-                            accessibilityMonitor.stop()
-                        }
+            let monitor = OfficeLifecycleMonitor(
+                appCallback: { [weak controller] app, type, runningApplication in
+                    Task { @MainActor in
+                        controller?.handleLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
                     }
-                    controller?.handleLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
-                    if type == .appLaunched {
-                        accessibilityMonitor?.attach(app: app, runningApplication: runningApplication)
-                    } else if type == .appTerminated {
-                        accessibilityMonitor?.detach(runningApplication: runningApplication)
+                },
+                sessionDidResignActiveCallback: { [weak controller] in
+                    Task { @MainActor in
+                        controller?.handleSessionDidResignActive()
                     }
                 }
-            }
+            )
             monitor.start()
             self.monitor = monitor
             DebugLog.info("OfficeResumeHelper app finished launching")
@@ -1024,25 +1030,11 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.stop()
-        accessibilityMonitor?.stop()
-        stopAccessibilityTrustRefresh()
         stopCommandObservers()
         ProcessInfo.processInfo.enableSuddenTermination()
         ProcessInfo.processInfo.enableAutomaticTermination("Office Resume Helper monitoring")
         Task { @MainActor in
             controller?.stop()
-        }
-    }
-
-    private func attachAccessibilityObserversForRunningApps(accessibilityMonitor: OfficeAccessibilityMonitor) {
-        let appsToObserve = OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps
-        for app in appsToObserve {
-            guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
-                continue
-            }
-            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-                accessibilityMonitor.attach(app: app, runningApplication: running)
-            }
         }
     }
 
@@ -1092,16 +1084,6 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        let promptAccessibilityObserver = center.addObserver(
-            forName: DaemonSharedIPC.promptAccessibilityCommandName,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.promptAccessibilityPermission(controller: controller)
-            }
-        }
-
         let quitHelperObserver = center.addObserver(
             forName: DaemonSharedIPC.quitHelperCommandName,
             object: nil,
@@ -1117,7 +1099,6 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             restoreObserver,
             clearObserver,
             refreshEntitlementObserver,
-            promptAccessibilityObserver,
             quitHelperObserver,
         ]
     }
@@ -1132,62 +1113,5 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             center.removeObserver(observer)
         }
         commandObservers.removeAll()
-    }
-
-    @MainActor
-    private func promptAccessibilityPermission(controller: HelperDaemonController) {
-        let trustedNow: Bool
-        if let accessibilityMonitor {
-            trustedNow = accessibilityMonitor.refreshTrust(prompt: true)
-            if trustedNow {
-                attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
-            } else {
-                accessibilityMonitor.stop()
-            }
-        } else {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            trustedNow = AXIsProcessTrustedWithOptions(options)
-        }
-
-        lastAccessibilityTrusted = trustedNow
-        controller.setAccessibilityTrusted(trustedNow)
-    }
-
-    private func startAccessibilityTrustRefresh(
-        accessibilityMonitor: OfficeAccessibilityMonitor,
-        controller: HelperDaemonController
-    ) {
-        stopAccessibilityTrustRefresh()
-
-        accessibilityTrustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self, weak accessibilityMonitor] _ in
-            guard
-                let self,
-                let accessibilityMonitor
-            else {
-                return
-            }
-
-            let trustedNow = accessibilityMonitor.refreshTrust(prompt: false)
-            guard trustedNow != self.lastAccessibilityTrusted else {
-                return
-            }
-
-            self.lastAccessibilityTrusted = trustedNow
-
-            Task { @MainActor in
-                controller.setAccessibilityTrusted(trustedNow)
-            }
-
-            if trustedNow {
-                self.attachAccessibilityObserversForRunningApps(accessibilityMonitor: accessibilityMonitor)
-            } else {
-                accessibilityMonitor.stop()
-            }
-        }
-    }
-
-    private func stopAccessibilityTrustRefresh() {
-        accessibilityTrustTimer?.invalidate()
-        accessibilityTrustTimer = nil
     }
 }

@@ -70,6 +70,17 @@ require_pattern() {
   fi
 }
 
+forbid_pattern_in_file() {
+  local file="$1"
+  local pattern="$2"
+  local label="$3"
+  if search_in_file "$pattern" "$file"; then
+    fail "$label"
+  else
+    pass "$label"
+  fi
+}
+
 forbid_pattern() {
   local file_glob="$1"
   local pattern="$2"
@@ -126,6 +137,10 @@ require_pattern "spec.md" "^## 16\\. Test Matrix" "spec has test matrix"
 require_pattern "spec.md" "Checkout Session|Checkout Sessions" "spec references Direct Checkout Sessions"
 require_pattern "PRD.md" "verified sign-in" "PRD requires verified sign-in for Direct billing"
 require_pattern "services-setup.md" "Worker-hosted pricing page|Worker-hosted pricing" "services setup documents Worker-hosted pricing"
+require_pattern "AGENTS.md" "NSWorkspace" "AGENTS documents lifecycle capture"
+require_pattern "PRD.md" "frontmost" "PRD documents frontmost refresh behavior"
+require_pattern "spec.md" "1s.*power adapter|power adapter.*1s" "spec documents 1s AC refresh cadence"
+require_pattern "spec.md" "10s.*battery|battery.*10s" "spec documents 10s battery refresh cadence"
 
 echo
 echo "== Component Mapping Checks =="
@@ -162,6 +177,13 @@ require_pattern "specs/backend-worker.md" "GET /billing/entry" "Backend spec doc
 require_pattern "specs/backend-worker.md" "GET /billing/pricing" "Backend spec documents pricing page endpoint"
 require_pattern "specs/backend-worker.md" "POST /billing/checkout" "Backend spec documents checkout endpoint"
 require_pattern "specs/menu-ui.md" "Choose Plan" "Menu UI spec documents Choose Plan action"
+forbid_pattern_in_file "AGENTS.md" "AXObserver|Accessibility-first|prompt-accessibility" "AGENTS has no AX-specific capture contract"
+forbid_pattern_in_file "PRD.md" "AXObserver|Accessibility-first|Accessibility: click to fix|Accessibility: OK" "PRD has no AX/Accessibility UI contract"
+forbid_pattern_in_file "spec.md" "AXObserver|prompt Accessibility|Accessibility trust state" "spec has no AX-specific capture/XPC contract"
+forbid_pattern_in_file "specs/contracts.md" "AXObserver|prompt-accessibility|Accessibility trust state" "contracts spec has no AX-specific IPC/status fields"
+forbid_pattern_in_file "specs/helper-daemon.md" "AXObserver|prompt-accessibility|Accessibility trust state" "helper spec has no AX-specific runtime contract"
+forbid_pattern_in_file "specs/menu-ui.md" "Accessibility: click to fix|Accessibility: OK" "menu UI spec has no Accessibility menu row"
+forbid_pattern_in_file "prompt.md" "AXObserver|Accessibility-first" "implementation prompt has no AX-specific capture instructions"
 
 echo
 echo "== Summary =="
