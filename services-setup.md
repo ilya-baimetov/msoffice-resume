@@ -26,7 +26,7 @@ xcode-select --install
 brew install xcodegen
 ```
 
-4. Install Node 20+:
+4. Install Node 24+:
 
 ```bash
 brew install node

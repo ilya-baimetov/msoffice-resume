@@ -17,6 +17,7 @@ Canonical docs:
 - Docs consistency checker: `./scripts/eval-docs-consistency.sh`
 - UI guardrails checker: `./scripts/eval-ui-guardrails.sh`
 - Install repo-managed git hooks: `./scripts/install-git-hooks.sh`
+- Local Node baseline: `.node-version` / `.nvmrc` pin Node 24; older versions are unsupported
 - Methodology/docs:
   - `docs/vibe-coding-methodology.md`
   - `docs/eval-scorecard-template.md`
@@ -123,6 +124,8 @@ npm ci || npm install
 npm run lint
 npm test
 ```
+
+The repo baseline is Node 24+. CI uses Node 24, and older local Node versions are unsupported.
 
 ## Build Modes
 ### Debug local build
