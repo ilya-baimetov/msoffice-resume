@@ -18,3 +18,9 @@ OfficeResumeBackend/node_modules/
 # Local env files
 .env
 .env.*
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
