@@ -12,7 +12,7 @@ Background runtime that captures Office state and performs restore actions.
 2. Observe lifecycle events via `NSWorkspace` activate/deactivate notifications.
 3. Trigger snapshot capture on lifecycle boundaries, bounded launch/restore warm-up retries, and the bounded frontmost refresh loop.
 4. Trigger auto-restore on app launch using restore engine.
-5. Trigger startup restore pass for already-running Office apps when helper starts.
+5. Trigger startup restore/capture reconciliation only for the current frontmost supported Office app when helper starts.
 6. Expose helper control/status over XPC service with shared IPC fallback.
 7. Enforce entitlement and pause gating on capture/restore paths.
 8. Keep behavior channel-neutral except entitlement/account provider implementation selected by channel.
@@ -22,22 +22,24 @@ Background runtime that captures Office state and performs restore actions.
 ## Required Runtime Behavior
 - On helper startup:
   - refresh entitlement state
-  - run startup restore pass for currently running supported Office apps
-  - capture startup state for currently running supported Office apps
+  - if the current frontmost app is supported and running, run startup restore/capture reconciliation for that app only
+  - do not probe every running Office app immediately at startup
   - publish helper-running status
 - On app launch:
   - append lifecycle event
   - attempt restore if eligible
-  - capture state if monitoring is active
-  - run a short bounded warm-up capture window while the app remains running
+  - if launch restore already touched the app scripting layer, do not immediately issue a second launch capture
+  - capture state if monitoring is active and launch restore did not already do the initial scripting pass
+  - run a short bounded warm-up capture window while the app remains running only when the app is not frontmost
   - start frontmost refresh loop if the launched app is frontmost
 - On app activate:
-  - capture state if monitoring is active
+  - capture state if monitoring is active unless a recent scripting interaction already occurred for that app
   - start frontmost refresh loop for that app
 - After restore:
-  - run a short bounded warm-up capture window while the app remains running
+  - run a short bounded warm-up capture window while the app remains running only when the restored app is not frontmost
 - On app deactivate:
   - stop any matching frontmost refresh loop immediately
+  - suppress rapid deactivate recapture caused by consent/focus churn immediately after a scripting interaction
   - do one final debounced capture while the app is still scriptable
 - During frontmost refresh:
   - skip if paused or entitlement cannot monitor
@@ -68,6 +70,7 @@ Background runtime that captures Office state and performs restore actions.
 - Helper status must be cleared/published correctly on start and shutdown.
 - Missing or stale folder-access bookmarks must degrade into logged partial failures rather than helper crashes.
 - Capture must not depend on Accessibility/TCC state.
+- Rapid activate/deactivate focus churn after the first scripting access must be coalesced so a single permission sheet cannot fan out into repeated prompts.
 
 ## Forbidden Changes
 - Do not perform UI logic in helper.

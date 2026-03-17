@@ -54,7 +54,7 @@ Office Resume restores continuity by capturing Office state in the background an
   - every `10s` on battery
   - stop immediately when the app deactivates
 - On Office relaunch, restore is attempted automatically.
-- On helper startup, a restore pass is attempted for currently running Office apps (to cover login/reboot races where Office relaunches before helper is ready).
+- On helper startup, a restore/capture reconciliation pass is attempted only for the current frontmost supported Office app (to cover login/reboot races without triggering a multi-app consent storm at launch).
 
 ### 6.2 Restore Behavior
 - Global policy applies to all supported apps.
@@ -109,7 +109,7 @@ MAS:
   - Office app launch
   - Office app activate
   - Office app deactivate
-  - helper startup reconciliation for already-running Office apps
+  - helper startup reconciliation for the current frontmost supported Office app only
   - session resign-active handling
 - Do not rely on app quit notifications for the final snapshot; by quit time Office state may already be gone.
 
@@ -132,7 +132,7 @@ MAS:
 
 ### FR-5 Restore Execution
 - Auto-run restore on relaunch for supported apps.
-- Auto-run a startup restore pass for currently running supported apps.
+- Auto-run a startup restore pass only for the current frontmost supported app.
 - Dedupe against currently open docs.
 - Apply one-shot marker per launch instance.
 - Log per-item success/failure locally.

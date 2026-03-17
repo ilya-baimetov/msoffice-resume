@@ -172,7 +172,7 @@ XPC-facing API (helper service):
   - stop when the app deactivates
 - Persist latest snapshots and append local events.
 - Execute restore on relaunch events.
-- Execute startup restore pass for already-running Office apps.
+- Execute startup restore/capture reconciliation only for the current frontmost supported Office app.
 - Enforce one-shot restore marker per app launch instance using external marker storage.
 - Enforce entitlement gating (`canMonitor`, `canRestore`).
 - Run as LSUIElement (headless; no visible window).
@@ -212,7 +212,8 @@ XPC-facing API (helper service):
 
 ### 6.1 Lifecycle Capture
 - Observe Office app launches/terminations/activations/deactivations via `NSWorkspace`.
-- On helper startup and session resign-active transitions, reconcile currently running supported Office apps and capture state while they are still scriptable.
+- On helper startup, reconcile only the current frontmost supported Office app and capture state while it is still scriptable.
+- On session resign-active transitions, reconcile currently running supported Office apps and capture state while they are still scriptable.
 - Bundle ID map:
   - `com.microsoft.Word`
   - `com.microsoft.Excel`
@@ -226,9 +227,11 @@ XPC-facing API (helper service):
   1. app launch
   2. app activate
   3. app deactivate
-  4. helper startup reconciliation for already-running apps
+  4. helper startup reconciliation for the current frontmost supported app only
   5. user session resign-active handling
   6. bounded launch/restore warm-up retries while the app remains running
+- The first scripting interaction after launch/startup may satisfy both restore planning and initial capture needs; do not immediately issue a second redundant scripting pass for the same app.
+- Suppress rapid activate/deactivate-triggered recapture for a short cooldown after a scripting interaction so permission/focus churn cannot amplify into repeated prompts.
 - For the frontmost supported Office app only, run a bounded refresh loop:
   - `1s` interval on power adapter
   - `10s` interval on battery
@@ -266,7 +269,7 @@ XPC-facing API (helper service):
 - No fetch/restore beyond lifecycle visibility.
 
 ## 8. Restore Engine
-On Office app launch (and helper startup pass for already-running apps):
+On Office app launch (and helper startup pass for the current frontmost supported app):
 1. Refresh entitlement.
 2. If paused or cannot restore, return.
 3. Load latest snapshot for app.
@@ -409,7 +412,7 @@ Direct `.pkg` rules:
 1. Launch/quit detection for each Office app updates lifecycle log correctly.
 2. Launch/activate/deactivate/frontmost-refresh capture updates snapshot diff correctly for W/E/P.
 3. Auto-restore on relaunch opens only missing docs and avoids duplicates.
-4. Startup restore pass covers already-running Office apps after login/reboot.
+4. Startup restore pass covers the current frontmost supported Office app after login/reboot without probing every running Office app immediately.
 5. One-shot marker prevents repeated restore attempts in the same launch instance.
 6. Untitled force-save creates temp artifact + metadata and supports reopen flow.
 7. Untitled artifact purge executes after artifact is no longer needed.

@@ -309,10 +309,18 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     }
 
     func menuOpened() {
+        if !helperAvailable {
+            HelperLauncher.ensureHelperRunning()
+        }
+        refreshAutostartHealth()
         requestStatusRefresh(reason: "menu-open")
     }
 
     func reloadStatus() {
+        if !helperAvailable {
+            HelperLauncher.ensureHelperRunning()
+        }
+        refreshAutostartHealth()
         requestStatusRefresh(reason: "manual")
     }
 
@@ -461,7 +469,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     private func applyStatus(_ status: DaemonStatusDTO, helperAvailable: Bool) {
         self.status = status
         self.helperAvailable = helperAvailable
-        refreshAutostartHealth()
     }
 
     private func loadSharedStatusFallback() {
@@ -477,7 +484,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         }
 
         helperAvailable = isHelperProcessRunning()
-        refreshAutostartHealth()
     }
 
     private func scheduleReconnectIfNeeded(reason: String) {
@@ -498,7 +504,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
             guard let self else { return }
             self.reconnectWorkItem = nil
             DebugLog.debug("Retrying helper startup", metadata: ["reason": reason, "attempt": "\(self.startupRetryCount)"])
-            HelperLauncher.ensureHelperRunning()
             self.requestStatusRefresh(reason: "reconnect")
         }
         reconnectWorkItem = workItem

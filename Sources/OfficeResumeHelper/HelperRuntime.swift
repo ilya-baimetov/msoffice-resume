@@ -116,6 +116,7 @@ final class HelperDaemonController {
     private var warmupCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
     private var captureInFlightApps: Set<OfficeApp> = []
     private var captureBackoffUntil: [OfficeApp: Date] = [:]
+    private var lastScriptingInteractionAt: [OfficeApp: Date] = [:]
     private var frontmostRefreshTask: Task<Void, Never>?
     private var frontmostRefreshApp: OfficeApp?
 
@@ -126,6 +127,7 @@ final class HelperDaemonController {
     private let warmupCaptureAttempts: Int = 5
     private let emptySnapshotProtectionWindow: TimeInterval = 60
     private let captureFailureBackoff: TimeInterval = 10
+    private let lifecycleCaptureCooldown: TimeInterval = 2
 
     init(
         channel: StorageChannel? = nil,
@@ -171,9 +173,7 @@ final class HelperDaemonController {
         Task { @MainActor in
             await refreshEntitlementStatus()
             await syncSnapshotTimestamps()
-            await restoreRunningAppsAtStartup()
-            await captureRunningAppsAtStartup()
-            await startFrontmostRefreshForCurrentFrontmostApp(reason: "startup")
+            await reconcileFrontmostAppAtStartup()
         }
     }
 
@@ -235,14 +235,20 @@ final class HelperDaemonController {
 
             switch type {
             case .appLaunched:
-                await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
+                let didAttemptRestore = await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
                 guard await canCaptureState() else {
                     return
                 }
-                await captureAppState(app: app, source: "launch")
+                if !didAttemptRestore {
+                    await captureAppState(app: app, source: "launch")
+                }
                 startWarmupCaptureIfNeeded(for: app, source: "launch-warmup")
                 await startFrontmostRefreshIfNeeded(for: app, reason: "launch")
             case .appActivated:
+                if shouldSuppressLifecycleCapture(for: app, type: type) {
+                    await startFrontmostRefreshIfNeeded(for: app, reason: "activate-cooldown")
+                    return
+                }
                 guard await canCaptureState() else {
                     return
                 }
@@ -250,6 +256,9 @@ final class HelperDaemonController {
                 await startFrontmostRefreshIfNeeded(for: app, reason: "activate")
             case .appDeactivated:
                 stopFrontmostRefreshIfNeeded(for: app)
+                if shouldSuppressLifecycleCapture(for: app, type: type) {
+                    return
+                }
                 guard await canCaptureState() else {
                     return
                 }
@@ -363,15 +372,15 @@ final class HelperDaemonController {
         }
     }
 
-    private func restoreAfterLaunchIfNeeded(app: OfficeApp, runningApplication: NSRunningApplication?) async {
+    private func restoreAfterLaunchIfNeeded(app: OfficeApp, runningApplication: NSRunningApplication?) async -> Bool {
         await refreshEntitlementStatus()
 
         guard !isPaused else {
-            return
+            return false
         }
 
         guard await entitlementProvider.canRestore() else {
-            return
+            return false
         }
 
         guard OfficeBundleRegistry.automaticRestoreApps.contains(app) else {
@@ -379,12 +388,13 @@ final class HelperDaemonController {
                 "Automatic restore skipped for lifecycle-only app",
                 metadata: ["app": app.rawValue]
             )
-            return
+            return false
         }
 
         _ = await performRestore(app: app, source: "relaunch", runningApplication: runningApplication)
         startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
         await startFrontmostRefreshIfNeeded(for: app, reason: "relaunch")
+        return true
     }
 
     private func performRestore(
@@ -405,6 +415,7 @@ final class HelperDaemonController {
         do {
             let currentDocs: [DocumentSnapshot]
             if OfficeBundleRegistry.documentRestoreApps.contains(app) {
+                noteScriptingInteraction(for: app)
                 let currentState = try await adapter.fetchState()
                 currentDocs = currentState.documents
             } else {
@@ -569,6 +580,7 @@ final class HelperDaemonController {
         }
 
         do {
+            noteScriptingInteraction(for: app)
             var snapshot = try await adapter.fetchState()
             captureBackoffUntil[app] = nil
 
@@ -645,35 +657,36 @@ final class HelperDaemonController {
         }
     }
 
-    private func captureRunningAppsAtStartup() async {
+    private func reconcileFrontmostAppAtStartup() async {
+        guard let app = frontmostSupportedApp(),
+              let runningApplication = runningApplication(for: app)
+        else {
+            return
+        }
+
+        DebugLog.debug(
+            "Reconciling frontmost app at startup",
+            metadata: ["app": app.rawValue]
+        )
+
+        let didAttemptRestore: Bool
+        if !isPaused, await entitlementProvider.canRestore() {
+            _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
+            didAttemptRestore = true
+        } else {
+            didAttemptRestore = false
+        }
+
         guard await canCaptureState() else {
             return
         }
 
-        for app in supportedCaptureApps() {
-            guard isAppRunning(app) else {
-                continue
-            }
+        if !didAttemptRestore {
             await captureAppState(app: app, source: "startup")
         }
-    }
 
-    private func restoreRunningAppsAtStartup() async {
-        guard !isPaused else {
-            return
-        }
-
-        guard await entitlementProvider.canRestore() else {
-            return
-        }
-
-        for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
-            guard let runningApplication = runningApplication(for: app) else {
-                continue
-            }
-
-            _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
-            startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
+        if captureBackoffUntil[app] == nil {
+            await startFrontmostRefreshIfNeeded(for: app, reason: "startup")
         }
     }
 
@@ -934,6 +947,9 @@ final class HelperDaemonController {
         guard OfficeBundleRegistry.documentRestoreApps.contains(app) else {
             return
         }
+        guard !isAppFrontmost(app) else {
+            return
+        }
 
         warmupCaptureTasks[app]?.cancel()
 
@@ -986,6 +1002,34 @@ final class HelperDaemonController {
 
     private func clearWarmupCaptureTaskIfNeeded(for app: OfficeApp) {
         warmupCaptureTasks[app] = nil
+    }
+
+    private func noteScriptingInteraction(for app: OfficeApp) {
+        lastScriptingInteractionAt[app] = Date()
+    }
+
+    private func shouldSuppressLifecycleCapture(for app: OfficeApp, type: LifecycleEventType) -> Bool {
+        guard type == .appActivated || type == .appDeactivated else {
+            return false
+        }
+        guard let lastInteraction = lastScriptingInteractionAt[app] else {
+            return false
+        }
+
+        let age = Date().timeIntervalSince(lastInteraction)
+        guard age < lifecycleCaptureCooldown else {
+            return false
+        }
+
+        DebugLog.debug(
+            "Suppressed lifecycle capture during scripting cooldown",
+            metadata: [
+                "app": app.rawValue,
+                "event": type.rawValue,
+                "ageSeconds": String(format: "%.2f", age),
+            ]
+        )
+        return true
     }
 
     private func startFrontmostRefreshForCurrentFrontmostApp(reason: String) async {
