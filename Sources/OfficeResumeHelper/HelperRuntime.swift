@@ -740,6 +740,18 @@ final class HelperDaemonController {
             return false
         }
 
+        if source == "activate" || source == "frontmost-refresh" {
+            DebugLog.debug(
+                "Skipped transient empty snapshot overwrite",
+                metadata: [
+                    "app": app.rawValue,
+                    "source": source,
+                    "launchID": newSnapshot.launchInstanceID,
+                ]
+            )
+            return true
+        }
+
         guard let firstSeenAt = observedLaunchFirstSeenAt[app] else {
             return false
         }
