@@ -14,6 +14,7 @@ public enum OfficeBundleRegistry {
 
     public static let documentRestoreApps: [OfficeApp] = [.word, .excel, .powerpoint]
     public static let lifecycleOnlyApps: [OfficeApp] = [.outlook]
+    public static let automaticRestoreApps: [OfficeApp] = documentRestoreApps
     public static let unsupportedApps: [OfficeApp] = [.onenote]
 
     public static func app(for bundleIdentifier: String?) -> OfficeApp? {

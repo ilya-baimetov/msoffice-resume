@@ -78,6 +78,12 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertNil(decoded.canonicalPath)
     }
 
+    func testAutomaticRestoreAppsExcludeOutlookLifecycleOnlyMode() {
+        XCTAssertEqual(OfficeBundleRegistry.automaticRestoreApps, [.word, .excel, .powerpoint])
+        XCTAssertEqual(OfficeBundleRegistry.lifecycleOnlyApps, [.outlook])
+        XCTAssertFalse(OfficeBundleRegistry.automaticRestoreApps.contains(.outlook))
+    }
+
     func testRestoreEngineDedupeAndOneShotMarker() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine")
         let snapshotStore = FileSnapshotStore(

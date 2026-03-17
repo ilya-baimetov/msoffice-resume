@@ -472,6 +472,14 @@ final class HelperDaemonController {
             return
         }
 
+        guard OfficeBundleRegistry.automaticRestoreApps.contains(app) else {
+            DebugLog.debug(
+                "Automatic restore skipped for lifecycle-only app",
+                metadata: ["app": app.rawValue]
+            )
+            return
+        }
+
         _ = await performRestore(app: app, source: "relaunch", runningApplication: runningApplication)
     }
 
@@ -681,7 +689,7 @@ final class HelperDaemonController {
             return
         }
 
-        for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
+        for app in OfficeBundleRegistry.automaticRestoreApps {
             guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app) else {
                 continue
             }
