@@ -10,6 +10,10 @@ public protocol ScriptExecuting {
     func run(script: String) throws -> String
 }
 
+public protocol DocumentOpening {
+    func open(path: String, app: OfficeApp) async throws
+}
+
 public struct NSAppleScriptExecutor: ScriptExecuting {
     public init() {}
 
@@ -37,9 +41,69 @@ public struct NSAppleScriptExecutor: ScriptExecuting {
     }
 }
 
+public struct NSWorkspaceDocumentOpener: DocumentOpening {
+    public init() {}
+
+    public func open(path: String, app: OfficeApp) async throws {
+        let request = try await MainActor.run {
+            try makeRequest(path: path, app: app)
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            Task { @MainActor in
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = true
+
+                NSWorkspace.shared.open(
+                    [request.documentURL],
+                    withApplicationAt: request.applicationURL,
+                    configuration: configuration
+                ) { _, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: ())
+                    }
+                }
+            }
+        }
+    }
+
+    private struct OpenRequest {
+        let documentURL: URL
+        let applicationURL: URL
+    }
+
+    @MainActor
+    private func makeRequest(path: String, app: OfficeApp) throws -> OpenRequest {
+        guard let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app),
+              let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        else {
+            throw OfficeAdapterError.unsupported
+        }
+
+        if path.hasPrefix("/") {
+            return OpenRequest(
+                documentURL: URL(fileURLWithPath: path),
+                applicationURL: applicationURL
+            )
+        }
+
+        if let documentURL = URL(string: path),
+           let scheme = documentURL.scheme?.lowercased(),
+           scheme == "http" || scheme == "https"
+        {
+            return OpenRequest(documentURL: documentURL, applicationURL: applicationURL)
+        }
+
+        throw OfficeAdapterError.unsupported
+    }
+}
+
 public final class AppleScriptOfficeAdapter: OfficeAdapter {
     public let app: OfficeApp
     private let scriptExecutor: ScriptExecuting
+    private let documentOpener: DocumentOpening?
     private let snapshotStore: SnapshotStore?
     private let fileManager: FileManager
     private let cloudStorageRootsProvider: () -> [URL]
@@ -47,12 +111,14 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
     public init(
         app: OfficeApp,
         scriptExecutor: ScriptExecuting = NSAppleScriptExecutor(),
+        documentOpener: DocumentOpening? = nil,
         snapshotStore: SnapshotStore? = nil,
         fileManager: FileManager = .default,
         cloudStorageRootsProvider: (() -> [URL])? = nil
     ) {
         self.app = app
         self.scriptExecutor = scriptExecutor
+        self.documentOpener = documentOpener
         self.snapshotStore = snapshotStore
         self.fileManager = fileManager
         self.cloudStorageRootsProvider = cloudStorageRootsProvider ?? {
@@ -604,14 +670,23 @@ public final class AppleScriptOfficeAdapter: OfficeAdapter {
         retryDelayNanoseconds: UInt64 = 500_000_000
     ) async throws {
         var lastError: Error?
+        let bundleID = OfficeBundleRegistry.bundleIdentifier(for: app)
         for attempt in 0..<maxAttempts {
             do {
-                _ = try scriptExecutor.run(script: openDocumentScript(path: path, app: app))
+                if let documentOpener {
+                    try await documentOpener.open(path: path, app: app)
+                } else {
+                    _ = try scriptExecutor.run(script: openDocumentScript(path: path, app: app))
+                }
                 return
             } catch {
                 lastError = error
                 guard attempt < maxAttempts - 1 else {
                     break
+                }
+                if let bundleID {
+                    _ = try? scriptExecutor.run(script: "tell application id \"\(bundleID)\" to activate")
+                    try? await waitUntilApplicationReady(bundleID: bundleID)
                 }
                 try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
             }
@@ -707,10 +782,11 @@ public struct OneNoteUnsupportedAdapter: OfficeAdapter {
 
 public enum OfficeAdapterFactory {
     public static func makeDefaultAdapters(snapshotStore: SnapshotStore) -> [OfficeApp: OfficeAdapter] {
+        let documentOpener = NSWorkspaceDocumentOpener()
         return [
-            .word: AppleScriptOfficeAdapter(app: .word, snapshotStore: snapshotStore),
-            .excel: AppleScriptOfficeAdapter(app: .excel, snapshotStore: snapshotStore),
-            .powerpoint: AppleScriptOfficeAdapter(app: .powerpoint, snapshotStore: snapshotStore),
+            .word: AppleScriptOfficeAdapter(app: .word, documentOpener: documentOpener, snapshotStore: snapshotStore),
+            .excel: AppleScriptOfficeAdapter(app: .excel, documentOpener: documentOpener, snapshotStore: snapshotStore),
+            .powerpoint: AppleScriptOfficeAdapter(app: .powerpoint, documentOpener: documentOpener, snapshotStore: snapshotStore),
             .outlook: AppleScriptOfficeAdapter(app: .outlook, snapshotStore: nil),
             .onenote: OneNoteUnsupportedAdapter(),
         ]

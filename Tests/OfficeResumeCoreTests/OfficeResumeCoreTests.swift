@@ -578,6 +578,115 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertTrue(openScript.contains("open POSIX file \"\(localDeck.path)\""))
     }
 
+    func testRestoreUsesDocumentOpenerForRuntimeOpenPath() async throws {
+        var executedScripts: [String] = []
+        var openedPaths: [String] = []
+
+        let executor = MockScriptExecutor { script in
+            executedScripts.append(script)
+            if script.contains(" to open ") {
+                XCTFail("Runtime open path should use document opener")
+            }
+            return "ok"
+        }
+
+        let opener = MockDocumentOpener { path, _ in
+            openedPaths.append(path)
+        }
+
+        let root = makeTempDirectory(name: "runtime-onedrive-root")
+            .appendingPathComponent("OneDrive-Personal", isDirectory: true)
+        let localDeck = root
+            .appendingPathComponent("Projects", isDirectory: true)
+            .appendingPathComponent("Sber", isDirectory: true)
+            .appendingPathComponent("Deck.pptx")
+        try FileManager.default.createDirectory(at: localDeck.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("deck".utf8).write(to: localDeck)
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .powerpoint,
+            scriptExecutor: executor,
+            documentOpener: opener,
+            snapshotStore: nil,
+            cloudStorageRootsProvider: { [root] }
+        )
+
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-runtime-open",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(
+                    app: .powerpoint,
+                    displayName: "Cloud Deck",
+                    canonicalPath: "https://d.docs.live.net/1234/Projects/Sber/Deck.pptx",
+                    isSaved: true,
+                    isTempArtifact: false,
+                    capturedAt: now
+                ),
+                DocumentSnapshot(
+                    app: .powerpoint,
+                    displayName: "Local Deck",
+                    canonicalPath: "/tmp/local-deck.pptx",
+                    isSaved: true,
+                    isTempArtifact: false,
+                    capturedAt: now
+                ),
+            ],
+            windowsMeta: []
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, [localDeck.path, "/tmp/local-deck.pptx"])
+        XCTAssertEqual(openedPaths, [localDeck.path, "/tmp/local-deck.pptx"])
+    }
+
+    func testRestoreRetriesTransientDocumentOpenerFailure() async throws {
+        var readinessAttempts = 0
+        var openAttempts = 0
+
+        let executor = MockScriptExecutor { script in
+            if script.contains(" to get name") {
+                readinessAttempts += 1
+                return "Microsoft PowerPoint"
+            }
+            return "ok"
+        }
+
+        let opener = MockDocumentOpener { _, _ in
+            openAttempts += 1
+            if openAttempts < 3 {
+                throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "not ready"])
+            }
+        }
+
+        let adapter = AppleScriptOfficeAdapter(
+            app: .powerpoint,
+            scriptExecutor: executor,
+            documentOpener: opener,
+            snapshotStore: nil
+        )
+
+        let now = Date()
+        let snapshot = AppSnapshot(
+            app: .powerpoint,
+            launchInstanceID: "launch-runtime-retry",
+            capturedAt: now,
+            documents: [
+                DocumentSnapshot(app: .powerpoint, displayName: "Deck", canonicalPath: "/tmp/retry-runtime.pptx", isSaved: true, isTempArtifact: false, capturedAt: now),
+            ],
+            windowsMeta: []
+        )
+
+        let result = try await adapter.restore(snapshot: snapshot)
+        XCTAssertEqual(result.failedPaths, [])
+        XCTAssertEqual(result.restoredPaths, ["/tmp/retry-runtime.pptx"])
+        XCTAssertEqual(openAttempts, 3)
+        XCTAssertGreaterThanOrEqual(readinessAttempts, 1)
+    }
+
     func testDirectAccountProviderMapsSubscribeBillingAction() async throws {
         try await withIsolatedDirectSessionStore { sessionStore in
             let sessionToken = "session-subscribe"
@@ -855,6 +964,14 @@ private struct MockScriptExecutor: ScriptExecuting {
 
     func run(script: String) throws -> String {
         try handler(script)
+    }
+}
+
+private struct MockDocumentOpener: DocumentOpening {
+    let handler: (String, OfficeApp) async throws -> Void
+
+    func open(path: String, app: OfficeApp) async throws {
+        try await handler(path, app)
     }
 }
 
