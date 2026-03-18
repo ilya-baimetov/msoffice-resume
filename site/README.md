@@ -10,6 +10,9 @@ Cloudflare currently recommends Workers Static Assets for new static sites and f
 
 This site is static HTML/CSS only, so it does not need a Worker script. The `wrangler.jsonc` file configures an assets-only Worker.
 
+Current Worker name:
+- `office-resume`
+
 ## Local Deploy
 
 Deploy directly from your machine:
