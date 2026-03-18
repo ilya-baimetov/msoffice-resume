@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import IOKit.ps
 import OfficeResumeCore
 
 final class OfficeLifecycleMonitor {
@@ -84,21 +83,20 @@ final class OfficeLifecycleMonitor {
     }
 }
 
-private enum PowerSourceKind {
-    case powerAdapter
-    case battery
-
-    static func current() -> PowerSourceKind {
-        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let providedType = IOPSGetProvidingPowerSourceType(snapshot).takeUnretainedValue() as String
-        return providedType == kIOPSACPowerValue ? .powerAdapter : .battery
-    }
-}
-
 @MainActor
 final class HelperDaemonController {
     private enum DefaultsKey {
         static let isPaused = "com.pragprod.msofficeresume.isPaused"
+    }
+
+    private enum AppMailboxItem {
+        case lifecycle(type: LifecycleEventType, runningApplication: NSRunningApplication?)
+        case capture(source: String)
+        case restore(
+            source: String,
+            runningApplication: NSRunningApplication?,
+            continuation: CheckedContinuation<RestoreCommandResultDTO, Never>
+        )
     }
 
     private let stateStore: DaemonStateStore
@@ -121,16 +119,19 @@ final class HelperDaemonController {
     private var warmupCaptureTasks: [OfficeApp: Task<Void, Never>] = [:]
     private var captureInFlightApps: Set<OfficeApp> = []
     private var captureBackoffUntil: [OfficeApp: Date] = [:]
+    private var appMailboxQueues: [OfficeApp: [AppMailboxItem]] = [:]
+    private var appMailboxRunning: Set<OfficeApp> = []
     private var lastScriptingInteractionAt: [OfficeApp: Date] = [:]
-    private var frontmostRefreshTask: Task<Void, Never>?
-    private var frontmostRefreshApp: OfficeApp?
+    private var lastSuccessfulAXCaptureAt: [OfficeApp: Date] = [:]
+    private var safetySweepTask: Task<Void, Never>?
+    private var safetySweepApp: OfficeApp?
 
     private let deactivateCaptureDebounceNanoseconds: UInt64 = 350_000_000
     private let axCaptureDebounceNanoseconds: UInt64 = 250_000_000
-    private let powerAdapterRefreshNanoseconds: UInt64 = 1_000_000_000
-    private let batteryRefreshNanoseconds: UInt64 = 10_000_000_000
     private let warmupCaptureIntervalNanoseconds: UInt64 = 1_000_000_000
     private let warmupCaptureAttempts: Int = 5
+    private let safetySweepIntervalNanoseconds: UInt64 = 30_000_000_000
+    private let safetySweepRecentAXWindow: TimeInterval = 30
     private let emptySnapshotProtectionWindow: TimeInterval = 60
     private let captureFailureBackoff: TimeInterval = 10
     private let lifecycleCaptureCooldown: TimeInterval = 2
@@ -188,7 +189,7 @@ final class HelperDaemonController {
         DebugLog.info("Helper daemon stopping")
         axObserverManager.detachAll()
         cancelPendingCaptures()
-        stopFrontmostRefresh()
+        stopSafetySweep()
         stateStore.setHelperRunning(false)
         publishStatus()
     }
@@ -251,55 +252,17 @@ final class HelperDaemonController {
 
             guard app != .onenote else {
                 if type == .appTerminated || type == .appDeactivated {
-                    stopFrontmostRefreshIfNeeded(for: app)
+                    stopSafetySweepIfNeeded(for: app)
                 }
                 return
             }
-
-            switch type {
-            case .appLaunched:
-                let didAttemptRestore = await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
-                guard await canCaptureState() else {
-                    return
-                }
-                if !didAttemptRestore {
-                    await captureAppState(app: app, source: "launch")
-                }
-                startWarmupCaptureIfNeeded(for: app, source: "launch-warmup")
-                await startFrontmostRefreshIfNeeded(for: app, reason: "launch")
-            case .appActivated:
-                if shouldSuppressLifecycleCapture(for: app, type: type) {
-                    await startFrontmostRefreshIfNeeded(for: app, reason: "activate-cooldown")
-                    return
-                }
-                guard await canCaptureState() else {
-                    return
-                }
-                await captureAppState(app: app, source: "activate")
-                await startFrontmostRefreshIfNeeded(for: app, reason: "activate")
-            case .appDeactivated:
-                stopFrontmostRefreshIfNeeded(for: app)
-                if shouldSuppressLifecycleCapture(for: app, type: type) {
-                    return
-                }
-                guard await canCaptureState() else {
-                    return
-                }
-                scheduleCapture(app: app, source: "deactivate", after: deactivateCaptureDebounceNanoseconds)
-            case .appTerminated:
-                stopFrontmostRefreshIfNeeded(for: app)
-                stopWarmupCaptureIfNeeded(for: app)
-                pendingCaptureTasks[app]?.cancel()
-                pendingCaptureTasks.removeValue(forKey: app)
-            case .stateCaptured, .restoreStarted, .restoreSucceeded, .restoreFailed:
-                break
-            }
+            enqueueLifecycleWork(app: app, type: type, runningApplication: runningApplication)
         }
     }
 
     func handleSessionDidResignActive() {
         Task { @MainActor in
-            stopFrontmostRefresh()
+            stopSafetySweep()
             guard await canCaptureState() else {
                 return
             }
@@ -308,7 +271,7 @@ final class HelperDaemonController {
                 guard isAppRunning(app) else {
                     continue
                 }
-                await captureAppState(app: app, source: "session")
+                enqueueCaptureWork(app: app, source: "session")
             }
         }
     }
@@ -344,12 +307,12 @@ final class HelperDaemonController {
         userDefaults.set(paused, forKey: DefaultsKey.isPaused)
         if paused {
             cancelPendingCaptures()
-            stopFrontmostRefresh()
+            stopSafetySweep()
         }
         let ok = stateStore.setPaused(paused)
         publishStatus()
         if !paused {
-            await startFrontmostRefreshForCurrentFrontmostApp(reason: "resume")
+            await startSafetySweepForCurrentFrontmostApp(reason: "resume")
         }
         DebugLog.info("Pause state updated", metadata: ["paused": paused ? "true" : "false", "ok": ok ? "true" : "false"])
         return ok
@@ -363,9 +326,9 @@ final class HelperDaemonController {
         }
 
         if let app {
-            let result = await performRestore(app: app, source: "manual")
+            let result = await enqueueRestoreWork(app: app, source: "manual")
             startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
-            await startFrontmostRefreshIfNeeded(for: app, reason: "manual-restore")
+            await startSafetySweepIfNeeded(for: app, reason: "manual-restore")
             return result
         }
 
@@ -373,13 +336,13 @@ final class HelperDaemonController {
         var failedCount = 0
 
         for app in OfficeBundleRegistry.documentRestoreApps + OfficeBundleRegistry.lifecycleOnlyApps {
-            let result = await performRestore(app: app, source: "manual")
+            let result = await enqueueRestoreWork(app: app, source: "manual")
             restoredCount += result.restoredCount
             failedCount += result.failedCount
             startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
         }
 
-        await startFrontmostRefreshForCurrentFrontmostApp(reason: "manual-restore")
+        await startSafetySweepForCurrentFrontmostApp(reason: "manual-restore")
 
         return RestoreCommandResultDTO(
             succeeded: failedCount == 0,
@@ -396,6 +359,58 @@ final class HelperDaemonController {
             return true
         } catch {
             return false
+        }
+    }
+
+    private func processLifecycleEvent(
+        app: OfficeApp,
+        type: LifecycleEventType,
+        runningApplication: NSRunningApplication?
+    ) async {
+        switch type {
+        case .appLaunched:
+            pendingCaptureTasks[app]?.cancel()
+            pendingCaptureTasks.removeValue(forKey: app)
+
+            let didAttemptRestore = await restoreAfterLaunchIfNeeded(app: app, runningApplication: runningApplication)
+            guard await canCaptureState() else {
+                return
+            }
+            if !didAttemptRestore {
+                await captureAppState(app: app, source: "launch")
+            }
+            startWarmupCaptureIfNeeded(for: app, source: "launch-warmup")
+            await startSafetySweepIfNeeded(for: app, reason: "launch")
+        case .appActivated:
+            pendingCaptureTasks[app]?.cancel()
+            pendingCaptureTasks.removeValue(forKey: app)
+
+            if shouldSuppressLifecycleCapture(for: app, type: type) {
+                await startSafetySweepIfNeeded(for: app, reason: "activate-cooldown")
+                return
+            }
+            guard await canCaptureState() else {
+                return
+            }
+            await captureAppState(app: app, source: "activate")
+            await startSafetySweepIfNeeded(for: app, reason: "activate")
+        case .appDeactivated:
+            stopSafetySweepIfNeeded(for: app)
+            if shouldSuppressLifecycleCapture(for: app, type: type) {
+                return
+            }
+            guard await canCaptureState() else {
+                return
+            }
+            scheduleCapture(app: app, source: "deactivate", after: deactivateCaptureDebounceNanoseconds)
+        case .appTerminated:
+            stopSafetySweepIfNeeded(for: app)
+            stopWarmupCaptureIfNeeded(for: app)
+            pendingCaptureTasks[app]?.cancel()
+            pendingCaptureTasks.removeValue(forKey: app)
+            lastSuccessfulAXCaptureAt.removeValue(forKey: app)
+        case .stateCaptured, .restoreStarted, .restoreSucceeded, .restoreFailed:
+            break
         }
     }
 
@@ -420,7 +435,7 @@ final class HelperDaemonController {
 
         _ = await performRestore(app: app, source: "relaunch", runningApplication: runningApplication)
         startWarmupCaptureIfNeeded(for: app, source: "restore-warmup")
-        await startFrontmostRefreshIfNeeded(for: app, reason: "relaunch")
+        await startSafetySweepIfNeeded(for: app, reason: "relaunch")
         return true
     }
 
@@ -625,7 +640,7 @@ final class HelperDaemonController {
                 }
             }
 
-            if source != "frontmost-refresh" || !snapshot.documents.isEmpty || !snapshot.windowsMeta.isEmpty {
+            if source != "safety-sweep" || !snapshot.documents.isEmpty || !snapshot.windowsMeta.isEmpty {
                 DebugLog.debug(
                     "Fetched app state",
                     metadata: [
@@ -635,6 +650,10 @@ final class HelperDaemonController {
                         "windows": "\(snapshot.windowsMeta.count)",
                     ]
                 )
+            }
+
+            if source == "ax" {
+                lastSuccessfulAXCaptureAt[app] = Date()
             }
 
             observeLaunch(app: app, launchID: snapshot.launchInstanceID)
@@ -664,7 +683,7 @@ final class HelperDaemonController {
         } catch {
             captureBackoffUntil[app] = Date().addingTimeInterval(captureFailureBackoff)
             stopWarmupCaptureIfNeeded(for: app)
-            stopFrontmostRefreshIfNeeded(for: app)
+            stopSafetySweepIfNeeded(for: app)
             DebugLog.error(
                 "State capture failed",
                 metadata: [
@@ -709,11 +728,11 @@ final class HelperDaemonController {
         }
 
         if !didAttemptRestore {
-            await captureAppState(app: app, source: "startup")
+            enqueueCaptureWork(app: app, source: "startup")
         }
 
         if captureBackoffUntil[app] == nil {
-            await startFrontmostRefreshIfNeeded(for: app, reason: "startup")
+            await startSafetySweepIfNeeded(for: app, reason: "startup")
         }
     }
 
@@ -740,9 +759,9 @@ final class HelperDaemonController {
             publishStatus()
             if !state.isActive {
                 cancelPendingCaptures()
-                stopFrontmostRefresh()
+                stopSafetySweep()
             } else if !isPaused {
-                await startFrontmostRefreshForCurrentFrontmostApp(reason: "entitlement-refresh")
+                await startSafetySweepForCurrentFrontmostApp(reason: "entitlement-refresh")
             }
             DebugLog.debug(
                 "Entitlement refreshed",
@@ -757,7 +776,7 @@ final class HelperDaemonController {
             publishStatus()
             if !state.isActive {
                 cancelPendingCaptures()
-                stopFrontmostRefresh()
+                stopSafetySweep()
             }
             DebugLog.warning(
                 "Entitlement refresh failed; using current state",
@@ -785,7 +804,7 @@ final class HelperDaemonController {
         } else {
             axObserverManager.detachAll()
             cancelPendingCaptures()
-            stopFrontmostRefresh()
+            stopSafetySweep()
         }
 
         publishStatus()
@@ -886,7 +905,7 @@ final class HelperDaemonController {
             return false
         }
 
-        if source == "activate" || source == "frontmost-refresh" {
+        if source == "activate" || source == "safety-sweep" {
             DebugLog.debug(
                 "Skipped transient empty snapshot overwrite",
                 metadata: [
@@ -1003,6 +1022,153 @@ final class HelperDaemonController {
         warmupCaptureTasks.removeAll()
     }
 
+    private func enqueueLifecycleWork(
+        app: OfficeApp,
+        type: LifecycleEventType,
+        runningApplication: NSRunningApplication?
+    ) {
+        var queue = appMailboxQueues[app] ?? []
+        let item = AppMailboxItem.lifecycle(type: type, runningApplication: runningApplication)
+
+        switch type {
+        case .appActivated, .appDeactivated:
+            if let index = queue.lastIndex(where: { queued in
+                if case let .lifecycle(existingType, _) = queued {
+                    return existingType == .appActivated || existingType == .appDeactivated
+                }
+                return false
+            }) {
+                queue[index] = item
+            } else {
+                queue.append(item)
+            }
+        case .appTerminated:
+            queue.removeAll { queued in
+                switch queued {
+                case .capture:
+                    return true
+                case let .lifecycle(existingType, _):
+                    return existingType == .appActivated || existingType == .appDeactivated
+                case .restore:
+                    return false
+                }
+            }
+            queue.append(item)
+        default:
+            queue.append(item)
+        }
+
+        appMailboxQueues[app] = queue
+        processMailboxIfNeeded(for: app)
+    }
+
+    private func enqueueCaptureWork(app: OfficeApp, source: String) {
+        var queue = appMailboxQueues[app] ?? []
+
+        if let index = queue.firstIndex(where: { queued in
+            if case .capture = queued {
+                return true
+            }
+            return false
+        }) {
+            queue[index] = .capture(source: mergedCaptureSource(existingQueueItem: queue[index], newSource: source))
+        } else {
+            queue.append(.capture(source: source))
+        }
+
+        appMailboxQueues[app] = queue
+        processMailboxIfNeeded(for: app)
+    }
+
+    private func enqueueRestoreWork(
+        app: OfficeApp,
+        source: String,
+        runningApplication: NSRunningApplication? = nil
+    ) async -> RestoreCommandResultDTO {
+        await withCheckedContinuation { continuation in
+            var queue = appMailboxQueues[app] ?? []
+            queue.append(
+                .restore(
+                    source: source,
+                    runningApplication: runningApplication,
+                    continuation: continuation
+                )
+            )
+            appMailboxQueues[app] = queue
+            processMailboxIfNeeded(for: app)
+        }
+    }
+
+    private func processMailboxIfNeeded(for app: OfficeApp) {
+        guard !appMailboxRunning.contains(app) else {
+            return
+        }
+        guard !(appMailboxQueues[app]?.isEmpty ?? true) else {
+            return
+        }
+
+        appMailboxRunning.insert(app)
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            while let item = self.dequeueMailboxItem(for: app) {
+                await self.processMailboxItem(item, for: app)
+            }
+
+            self.appMailboxRunning.remove(app)
+            if !(self.appMailboxQueues[app]?.isEmpty ?? true) {
+                self.processMailboxIfNeeded(for: app)
+            }
+        }
+    }
+
+    private func dequeueMailboxItem(for app: OfficeApp) -> AppMailboxItem? {
+        guard var queue = appMailboxQueues[app], !queue.isEmpty else {
+            appMailboxQueues.removeValue(forKey: app)
+            return nil
+        }
+
+        let item = queue.removeFirst()
+        if queue.isEmpty {
+            appMailboxQueues.removeValue(forKey: app)
+        } else {
+            appMailboxQueues[app] = queue
+        }
+        return item
+    }
+
+    private func processMailboxItem(_ item: AppMailboxItem, for app: OfficeApp) async {
+        switch item {
+        case let .lifecycle(type, runningApplication):
+            await processLifecycleEvent(app: app, type: type, runningApplication: runningApplication)
+        case let .capture(source):
+            guard await canCaptureState() else {
+                return
+            }
+            await captureAppState(app: app, source: source)
+        case let .restore(source, runningApplication, continuation):
+            let result = await performRestore(app: app, source: source, runningApplication: runningApplication)
+            continuation.resume(returning: result)
+        }
+    }
+
+    private func mergedCaptureSource(existingQueueItem: AppMailboxItem, newSource: String) -> String {
+        guard case let .capture(existingSource) = existingQueueItem else {
+            return newSource
+        }
+
+        if existingSource == "ax" || newSource == "ax" {
+            return "ax"
+        }
+        if newSource == "deactivate" {
+            return newSource
+        }
+        return existingSource
+    }
+
     private func scheduleCapture(app: OfficeApp, source: String, after nanoseconds: UInt64) {
         pendingCaptureTasks[app]?.cancel()
 
@@ -1023,7 +1189,7 @@ final class HelperDaemonController {
                 return
             }
 
-            await self.captureAppState(app: app, source: source)
+            self.enqueueCaptureWork(app: app, source: source)
         }
 
         pendingCaptureTasks[app] = task
@@ -1070,7 +1236,7 @@ final class HelperDaemonController {
                     return
                 }
 
-                await self.captureAppState(app: app, source: source)
+                self.enqueueCaptureWork(app: app, source: source)
             }
         }
 
@@ -1118,16 +1284,16 @@ final class HelperDaemonController {
         return true
     }
 
-    private func startFrontmostRefreshForCurrentFrontmostApp(reason: String) async {
+    private func startSafetySweepForCurrentFrontmostApp(reason: String) async {
         guard let app = frontmostSupportedApp() else {
-            stopFrontmostRefresh()
+            stopSafetySweep()
             return
         }
 
-        await startFrontmostRefreshIfNeeded(for: app, reason: reason)
+        await startSafetySweepIfNeeded(for: app, reason: reason)
     }
 
-    private func startFrontmostRefreshIfNeeded(for app: OfficeApp, reason: String) async {
+    private func startSafetySweepIfNeeded(for app: OfficeApp, reason: String) async {
         guard supportedCaptureApps().contains(app) else {
             return
         }
@@ -1137,27 +1303,26 @@ final class HelperDaemonController {
         guard isAppFrontmost(app), isAppRunning(app) else {
             return
         }
-        guard frontmostRefreshApp != app || frontmostRefreshTask == nil else {
+        guard safetySweepApp != app || safetySweepTask == nil else {
             return
         }
 
-        stopFrontmostRefresh()
-        frontmostRefreshApp = app
+        stopSafetySweep()
+        safetySweepApp = app
 
         DebugLog.debug(
-            "Starting frontmost refresh loop",
+            "Starting sparse safety sweep",
             metadata: ["app": app.rawValue, "reason": reason]
         )
 
-        frontmostRefreshTask = Task { @MainActor [weak self] in
+        safetySweepTask = Task { @MainActor [weak self] in
             guard let self else {
                 return
             }
 
             while !Task.isCancelled {
-                let interval = self.frontmostRefreshInterval()
                 do {
-                    try await Task.sleep(nanoseconds: interval)
+                    try await Task.sleep(nanoseconds: self.safetySweepIntervalNanoseconds)
                 } catch {
                     break
                 }
@@ -1170,44 +1335,40 @@ final class HelperDaemonController {
                     break
                 }
 
-                await self.captureAppState(app: app, source: "frontmost-refresh")
+                if let lastAXCaptureAt = self.lastSuccessfulAXCaptureAt[app],
+                   Date().timeIntervalSince(lastAXCaptureAt) < self.safetySweepRecentAXWindow {
+                    continue
+                }
+
+                self.enqueueCaptureWork(app: app, source: "safety-sweep")
             }
 
-            self.clearFrontmostRefreshStateIfNeeded(for: app)
+            self.clearSafetySweepStateIfNeeded(for: app)
         }
     }
 
-    private func stopFrontmostRefreshIfNeeded(for app: OfficeApp) {
-        guard frontmostRefreshApp == app else {
+    private func stopSafetySweepIfNeeded(for app: OfficeApp) {
+        guard safetySweepApp == app else {
             return
         }
-        stopFrontmostRefresh()
+        stopSafetySweep()
     }
 
-    private func stopFrontmostRefresh() {
-        if let app = frontmostRefreshApp {
-            DebugLog.debug("Stopping frontmost refresh loop", metadata: ["app": app.rawValue])
+    private func stopSafetySweep() {
+        if let app = safetySweepApp {
+            DebugLog.debug("Stopping sparse safety sweep", metadata: ["app": app.rawValue])
         }
-        frontmostRefreshTask?.cancel()
-        frontmostRefreshTask = nil
-        frontmostRefreshApp = nil
+        safetySweepTask?.cancel()
+        safetySweepTask = nil
+        safetySweepApp = nil
     }
 
-    private func clearFrontmostRefreshStateIfNeeded(for app: OfficeApp) {
-        guard frontmostRefreshApp == app else {
+    private func clearSafetySweepStateIfNeeded(for app: OfficeApp) {
+        guard safetySweepApp == app else {
             return
         }
-        frontmostRefreshTask = nil
-        frontmostRefreshApp = nil
-    }
-
-    private func frontmostRefreshInterval() -> UInt64 {
-        switch PowerSourceKind.current() {
-        case .powerAdapter:
-            return powerAdapterRefreshNanoseconds
-        case .battery:
-            return batteryRefreshNanoseconds
-        }
+        safetySweepTask = nil
+        safetySweepApp = nil
     }
 
     private func supportedCaptureApps() -> [OfficeApp] {
