@@ -44,12 +44,12 @@ Legacy note:
 - Safety reconciliation:
   - no tight polling loop as the primary model
   - allow a sparse safety sweep only as documented in `spec.md`
-- Retention: latest snapshot only (+ minimal local events/logs)
+- Retention: latest snapshot only (+ minimal local events/logs retained for 24 hours)
 - Privacy: local logs only, no remote analytics
 - Trial/pricing: 14-day trial, then `$5/month` or `$50/year`
 - Offline entitlement grace: 7 days
 - Direct trial and free-pass are server-authoritative after verified sign-in
-- Debug local testing remains supported through explicit debug-only runtime opt-in
+- Debug and Release installs use the same entitlement path; no client-side entitlement bypass exists
 
 ## v1 Support Matrix
 - Microsoft Word: full document-level capture/restore
@@ -95,9 +95,9 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 
 ## Free-Pass and Entitlement Security Policy
 - Free-pass is backend-authoritative in Direct and granted only via verified server-side allowlist/session checks.
-- Keep a checked-in backend-side hard-coded allowlist file for real-world testing/friends-and-family access; environment allowlist entries may extend it.
+- Keep a checked-in backend-side hard-coded allowlist file for real-world testing/friends-and-family access at `OfficeResumeBackend/src/free-pass-emails.js`; environment allowlist entries may extend it.
 - Production release flow must not rely on client-side local free-pass files or environment overrides.
-- Any local bypasses must be debug-only, explicitly gated, and absent from Release behavior.
+- Do not add client-side local entitlement or free-pass bypass paths.
 - Direct session tokens are stored in Keychain during normal app usage.
 
 ## Coding and Architecture Guardrails
@@ -132,8 +132,7 @@ Do not attempt to reverse-engineer Apple's private binary Resume formats exactly
 ## Build Modes
 - `Debug` local build:
   - unsigned or ad hoc signed allowed
-  - local testing supported
-  - debug-only auth/entitlement shortcuts may be available behind compile-time guards plus explicit runtime opt-in
+  - local testing uses the same downloaded-package install path and entitlement flow as ReleaseDirect
 - `ReleaseDirect`:
   - Developer ID signed + notarized `.pkg`
   - production backend

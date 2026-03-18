@@ -98,7 +98,6 @@ Direct only:
 - Signed-in non-paid users see `Choose Plan…`, which opens a Worker-hosted pricing page and then Stripe Checkout.
 - Signed-in paid users see `Manage Subscription`, which opens Stripe Billing Portal.
 - Free-pass users do not see a paid billing action.
-- In Debug builds only, explicit local testing shortcuts may appear when enabled by runtime debug opt-in.
 
 ## 7. Functional Requirements
 ### FR-1 Direct-Only Product Contract
@@ -133,7 +132,7 @@ Direct only:
 - Maintain latest snapshot only per Office app.
 - Persist local events and restore markers.
 - Use a direct-only storage layout under `~/Library/Application Support/com.pragprod.msofficeresume/`.
-- Local logs remain available for user-visible debugging.
+- Local logs remain available for user-visible debugging and are trimmed to the most recent 24 hours.
 
 ### FR-6 Untitled Document Handling
 - For Word/Excel/PowerPoint untitled docs, force-save to temporary artifacts when needed for recoverability.
@@ -193,8 +192,8 @@ Direct only:
 - The product does not require sandboxing for enterprise distribution.
 
 ### FR-15 Local Debug Usability
-- Developers can build and run a Debug version locally without production service setup.
-- Debug-only auth/entitlement shortcuts require explicit runtime opt-in and must not exist in Release behavior.
+- Developers can build and run a Debug version locally without Apple Developer signing.
+- Debug builds use the same packaged install flow and backend-authoritative entitlement behavior as Release builds.
 
 ## 8. Non-Functional Requirements
 - macOS 14+ only; Apple Silicon only.
@@ -238,7 +237,7 @@ Direct only:
 7. Direct billing/account flow works.
 8. Direct `.pkg` installer installs/upgrades cleanly.
 9. Production Direct flow does not accept local free-pass or fake-session bypass inputs.
-10. Debug local flow exists without weakening Release behavior.
+10. Debug local packaging uses the same downloaded-package install path and entitlement flow as Release behavior.
 11. Copilot review workflow documented.
 12. Accessibility flow works and does not reprompt endlessly.
 13. Apple Events consent remains bounded under focus churn.
@@ -270,7 +269,7 @@ Direct only:
 
 ### Risk 7: Direct email delivery or callback misconfiguration
 - Impact: users cannot complete sign-in.
-- Mitigation: explicit service setup docs, debug-only local shortcut path, callback URL tests.
+- Mitigation: explicit service setup docs, callback URL tests, backend allowlist for internal free-pass accounts.
 
 ## 14. Open Questions For Future Versions
 - Whether a later MAS-compatible product should exist at all

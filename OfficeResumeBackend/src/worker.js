@@ -81,10 +81,6 @@ function csvSet(value) {
   );
 }
 
-function isEnabled(value) {
-  return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
-}
-
 async function parseRequestBody(request) {
   const contentType = (request.headers.get("content-type") ?? "").toLowerCase();
 
@@ -1039,9 +1035,6 @@ export function createApp(store = null, options = {}) {
   const webhookToleranceSeconds = Number.isFinite(parsedToleranceSeconds)
     ? parsedToleranceSeconds
     : 300;
-  const enableDebugMagicLinkTokens = isEnabled(
-    options.enableDebugMagicLinkTokens ?? options.env?.ENABLE_DEBUG_MAGIC_LINK_TOKEN,
-  );
 
   const freePassEmails = new Set([
     ...hardCodedFreePassEmails.map((email) => normalize(email)).filter(Boolean),
@@ -1054,7 +1047,6 @@ export function createApp(store = null, options = {}) {
     fetchImpl,
     stripeWebhookSecret,
     webhookToleranceSeconds,
-    enableDebugMagicLinkTokens,
     resendApiKey: options.resendApiKey ?? options.env?.RESEND_API_KEY ?? "",
     resendFromEmail: options.resendFromEmail ?? options.env?.RESEND_FROM_EMAIL ?? "",
     callbackScheme: options.callbackScheme ?? options.env?.DIRECT_APP_CALLBACK_SCHEME ?? "officeresume-direct",
@@ -1104,10 +1096,6 @@ export function createApp(store = null, options = {}) {
       const verifyURL = new URL("/auth/verify", url.origin);
       verifyURL.searchParams.set("token", token);
 
-      if (resolvedOptions.enableDebugMagicLinkTokens) {
-        return jsonResponse({ ok: true, debugToken: token }, 202);
-      }
-
       try {
         await sendMagicLinkEmail({
           email,
@@ -1119,23 +1107,6 @@ export function createApp(store = null, options = {}) {
       }
 
       return jsonResponse({ ok: true }, 202);
-    }
-
-    if (request.method === "POST" && path === "/auth/verify") {
-      const body = await parseRequestBody(request);
-      const token = typeof body.token === "string" ? body.token.trim() : "";
-      if (!token) {
-        return jsonResponse({ error: "token is required" }, 400);
-      }
-
-      const email = await resolvedStore.consumeMagicLink(token);
-      if (!email) {
-        return jsonResponse({ error: "invalid token" }, 401);
-      }
-
-      const sessionToken = await resolvedStore.createSession(email);
-      await resolvedStore.ensureTrialStart(email);
-      return jsonResponse({ ok: true, sessionToken, email }, 200);
     }
 
     if (request.method === "GET" && path === "/auth/verify") {

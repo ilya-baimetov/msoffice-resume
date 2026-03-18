@@ -9,6 +9,9 @@ public enum DebugLogLevel: String {
 
 public enum DebugLog {
     private static let queue = DispatchQueue(label: "com.pragprod.msofficeresume.debug-log")
+    public static let retentionInterval: TimeInterval = 24 * 60 * 60
+    private static let pruneInterval: TimeInterval = 15 * 60
+    private static var lastPrunedAtByPath: [String: Date] = [:]
 
     public static func log(
         _ message: String,
@@ -19,8 +22,10 @@ public enum DebugLog {
     ) {
         queue.async {
             do {
+                let now = Date()
                 let url = try logFileURL()
-                let timestamp = isoFormatter.string(from: Date())
+                try pruneExpiredEntriesIfNeeded(at: url, now: now)
+                let timestamp = isoFormatter.string(from: now)
                 let source = "\(file):\(line)"
 
                 let metadataSegment: String
@@ -71,6 +76,17 @@ public enum DebugLog {
         (try? logFileURL().path) ?? ""
     }
 
+    public static func trimLogHistory(
+        now: Date = Date(),
+        fileManager: FileManager = .default,
+        baseDirectoryOverride: URL? = nil
+    ) throws {
+        try queue.sync {
+            let url = try logFileURL(fileManager: fileManager, baseDirectoryOverride: baseDirectoryOverride)
+            try pruneExpiredEntriesIfNeeded(at: url, now: now, fileManager: fileManager, force: true)
+        }
+    }
+
     @discardableResult
     public static func openLogInConsole() -> Bool {
         do {
@@ -90,13 +106,69 @@ public enum DebugLog {
         }
     }
 
-    private static func logFileURL(fileManager: FileManager = .default) throws -> URL {
-        let directory = try RuntimeConfiguration
-            .sharedRoot(fileManager: fileManager)
-            .appendingPathComponent("logs", isDirectory: true)
+    private static func logFileURL(
+        fileManager: FileManager = .default,
+        baseDirectoryOverride: URL? = nil
+    ) throws -> URL {
+        let root: URL
+        if let baseDirectoryOverride {
+            root = baseDirectoryOverride
+        } else {
+            root = try RuntimeConfiguration.sharedRoot(fileManager: fileManager)
+        }
+        let directory = root.appendingPathComponent("logs", isDirectory: true)
 
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("debug-v1.log")
+    }
+
+    private static func pruneExpiredEntriesIfNeeded(
+        at url: URL,
+        now: Date,
+        fileManager: FileManager = .default,
+        force: Bool = false
+    ) throws {
+        if !force,
+           let lastPrunedAt = lastPrunedAtByPath[url.path],
+           now.timeIntervalSince(lastPrunedAt) < pruneInterval {
+            return
+        }
+
+        lastPrunedAtByPath[url.path] = now
+
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+
+        let data = try Data(contentsOf: url)
+        guard !data.isEmpty else {
+            return
+        }
+
+        let cutoff = now.addingTimeInterval(-retentionInterval)
+        let filteredLines = String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .filter { shouldKeepLine(String($0), cutoff: cutoff) }
+
+        let filteredData = filteredLines.isEmpty
+            ? Data()
+            : Data((filteredLines.joined(separator: "\n") + "\n").utf8)
+
+        guard filteredData != data else {
+            return
+        }
+
+        try filteredData.write(to: url, options: .atomic)
+    }
+
+    private static func shouldKeepLine(_ line: String, cutoff: Date) -> Bool {
+        guard let timestamp = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).first,
+              let date = isoFormatter.date(from: String(timestamp))
+        else {
+            return false
+        }
+
+        return date >= cutoff
     }
 
     private static let isoFormatter: ISO8601DateFormatter = {

@@ -3,9 +3,9 @@
 Use this checklist to validate local behavior end-to-end.
 
 ## Preconditions
-1. Build and install the local dev package:
-- `./scripts/package-local-dev.sh`
-- `sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg`
+1. Build and install the package through the canonical packaging path:
+- `CONFIGURATION=Debug ./scripts/release-direct.sh`
+- `sudo ./scripts/install-package.sh ./dist/OfficeResume.pkg`
 
 2. Ensure apps exist:
 - `/Applications/Office Resume.app`

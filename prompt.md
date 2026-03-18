@@ -81,7 +81,7 @@ Direct billing strategy is locked:
 - Do not attempt to revive the deprecated no-AX sandbox architecture.
 - Enforce post-trial inactive behavior: monitoring and restore disabled, history and status read-only.
 - Enforce 7-day offline entitlement grace.
-- Keep Debug-only shortcuts compile-time gated and runtime opt-in only.
+- Keep Debug and Release downloaded-package installs on the same runtime and entitlement path.
 
 ## Acceptance Criteria
 Implementation is complete only when:

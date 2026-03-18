@@ -56,7 +56,6 @@ Legacy note:
     - `Manage Subscription` for paid users
     - no paid action for free-pass users
   - `Sign Out`
-- Debug builds may expose explicit local testing shortcuts when runtime opt-in is enabled.
 
 ## Direct Rules
 - Direct target sets channel marker to `direct`.

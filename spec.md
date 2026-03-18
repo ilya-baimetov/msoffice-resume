@@ -351,6 +351,9 @@ Shared auxiliary files:
 - `logs/debug-v1.log`
 - `entitlements/entitlement-cache-v1.json`
 
+Log retention:
+- keep only the most recent 24 hours of local debug log history
+
 The direct-only architecture does not depend on sandbox container indirection.
 
 ## 12. Account and Entitlement Architecture
@@ -364,11 +367,7 @@ The direct-only architecture does not depend on sandbox container indirection.
 - Worker-hosted pricing creates Stripe Checkout Sessions for monthly and yearly plans.
 - Existing paid subscribers open Stripe Billing Portal.
 - Remaining Direct trial time is converted into Stripe-supported subscription-trial settings during Checkout creation so billing starts after unused trial time.
-- A debug-only local shortcut may use a returned debug token when explicit backend dev mode is enabled.
-
-### 12.2 Debug Behavior
-- Debug entitlement bypass is compile-time gated and requires explicit runtime opt-in.
-- Debug bypass must not exist in Release behavior.
+- The checked-in free-pass allowlist lives in `OfficeResumeBackend/src/free-pass-emails.js`; environment allowlist values may extend it backend-side.
 
 ## 13. Helper/Menu Coordination
 - Preferred transport: XPC.

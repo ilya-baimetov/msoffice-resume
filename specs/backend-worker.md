@@ -19,7 +19,6 @@ Direct-channel auth, subscription, billing-portal, and entitlement service.
 
 ## Endpoint Contract
 - `POST /auth/request-link`
-- `POST /auth/verify` (debug/programmatic exchange)
 - `GET /auth/verify`
 - `GET /entitlements/current`
 - `GET /billing/entry`
@@ -32,10 +31,8 @@ Direct-channel auth, subscription, billing-portal, and entitlement service.
 ## Auth Requirements
 - Normalize email before storage/lookup.
 - `POST /auth/request-link`:
-  - production: create token, store it, send email, return `202 { ok: true }`
-  - debug-only mode: may also return a debug token for local testing
+  - create token, store it, send email, return `202 { ok: true }`
 - `GET /auth/verify` validates token, creates session, and redirects to app custom URL scheme.
-- `POST /auth/verify` exists only for debug/programmatic local flows.
 - Session responses may include email metadata for the client account UI.
 
 ## Trial and Subscription Requirements
@@ -71,12 +68,11 @@ Direct-channel auth, subscription, billing-portal, and entitlement service.
 - Do not add analytics/event telemetry endpoints.
 - Do not change entitlement response schema without updating shared specs/contracts.
 - Do not add client-trust free-pass activation behavior.
-- Do not ship production behavior that depends on local-only debug tokens.
+- Do not add local-only token or sign-in shortcuts that bypass the normal email verification flow.
 
 ## Component Acceptance Checks
 - `npm test` passes.
 - Production `request-link` returns no raw token.
-- Debug-only token exposure is explicitly gated.
 - Trial persistence is covered by tests.
 - Webhook signature and replay validation are covered.
 - Billing entry, pricing page, Checkout Session creation, and billing portal behavior are covered.

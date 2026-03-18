@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-PKG_PATH="${1:-$REPO_ROOT/dist/OfficeResume-local-dev.pkg}"
+PKG_PATH="${1:-$REPO_ROOT/dist/OfficeResume.pkg}"
 
 if [[ ! -f "$PKG_PATH" ]]; then
   echo "Missing package: $PKG_PATH" >&2

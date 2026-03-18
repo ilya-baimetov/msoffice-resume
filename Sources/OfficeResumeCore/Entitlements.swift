@@ -34,30 +34,6 @@ public enum EntitlementError: LocalizedError {
     }
 }
 
-public enum DebugEntitlementBypassEvaluator {
-    public static func overrideState(
-        now: Date,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard(),
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> EntitlementState? {
-        guard RuntimeConfiguration.isDebugEntitlementBypassEnabled(
-            userDefaults: userDefaults,
-            environment: environment
-        ) else {
-            return nil
-        }
-
-        let validUntil = Calendar.current.date(byAdding: .year, value: 10, to: now)
-        return EntitlementState(
-            isActive: true,
-            plan: .yearly,
-            validUntil: validUntil,
-            trialEndsAt: nil,
-            lastValidatedAt: now
-        )
-    }
-}
-
 public enum EntitlementPolicy {
     public static let offlineGraceDays = 7
 
@@ -159,33 +135,19 @@ public actor CachedEntitlementProvider: EntitlementProvider {
     private let store: EntitlementFileStore
     private let remoteValidator: RemoteEntitlementValidating?
     private let now: () -> Date
-    private let overrideEnvironment: [String: String]
-    private let userDefaults: UserDefaults
 
     public init(
         store: EntitlementFileStore,
         remoteValidator: RemoteEntitlementValidating? = nil,
-        now: @escaping () -> Date = Date.init,
-        overrideEnvironment: [String: String] = ProcessInfo.processInfo.environment,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.remoteValidator = remoteValidator
         self.now = now
-        self.overrideEnvironment = overrideEnvironment
-        self.userDefaults = userDefaults
     }
 
     public func currentState() async -> EntitlementState {
         let now = now()
-
-        if let override = DebugEntitlementBypassEvaluator.overrideState(
-            now: now,
-            userDefaults: userDefaults,
-            environment: overrideEnvironment
-        ) {
-            return override
-        }
 
         do {
             if let cached = try await store.loadCachedState() {
@@ -200,15 +162,6 @@ public actor CachedEntitlementProvider: EntitlementProvider {
 
     public func refresh() async throws -> EntitlementState {
         let now = now()
-
-        if let override = DebugEntitlementBypassEvaluator.overrideState(
-            now: now,
-            userDefaults: userDefaults,
-            environment: overrideEnvironment
-        ) {
-            try? await store.saveCachedState(override)
-            return override
-        }
 
         if let remoteValidator {
             do {
@@ -252,8 +205,7 @@ public actor StoreKitEntitlementProvider: EntitlementProvider {
     public init(
         store: EntitlementFileStore,
         remoteValidator: RemoteEntitlementValidating? = nil,
-        now: @escaping () -> Date = Date.init,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        now: @escaping () -> Date = Date.init
     ) {
         let resolvedValidator: RemoteEntitlementValidating?
 #if canImport(StoreKit)
@@ -268,8 +220,7 @@ public actor StoreKitEntitlementProvider: EntitlementProvider {
         self.base = CachedEntitlementProvider(
             store: store,
             remoteValidator: resolvedValidator,
-            now: now,
-            userDefaults: userDefaults
+            now: now
         )
     }
 
@@ -296,14 +247,12 @@ public actor StripeEntitlementProvider: EntitlementProvider {
     public init(
         store: EntitlementFileStore,
         remoteValidator: RemoteEntitlementValidating? = nil,
-        now: @escaping () -> Date = Date.init,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        now: @escaping () -> Date = Date.init
     ) {
         self.base = CachedEntitlementProvider(
             store: store,
             remoteValidator: remoteValidator,
-            now: now,
-            userDefaults: userDefaults
+            now: now
         )
     }
 
@@ -359,10 +308,6 @@ public struct DirectServiceConfiguration {
 
     public var requestLinkURL: URL {
         baseURL.appendingPathComponent("auth/request-link")
-    }
-
-    public var verifyDebugTokenURL: URL {
-        baseURL.appendingPathComponent("auth/verify")
     }
 
     public var currentEntitlementURL: URL {
@@ -530,14 +475,7 @@ public struct StripeEntitlementValidator: RemoteEntitlementValidating {
 public actor DirectAccountProvider: AccountProvider {
     private struct RequestLinkResponse: Decodable {
         let ok: Bool
-        let debugToken: String?
         let message: String?
-    }
-
-    private struct VerifyResponse: Decodable {
-        let ok: Bool
-        let sessionToken: String
-        let email: String
     }
 
     private struct BillingEntryResponse: Decodable {
@@ -556,8 +494,7 @@ public actor DirectAccountProvider: AccountProvider {
         configuration: DirectServiceConfiguration?,
         sessionStore: DirectSessionKeychainStore,
         entitlementStore: EntitlementFileStore,
-        session: URLSession = .shared,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        session: URLSession = .shared
     ) {
         self.configuration = configuration
         self.sessionStore = sessionStore
@@ -571,14 +508,12 @@ public actor DirectAccountProvider: AccountProvider {
                     config: configuration,
                     sessionStore: sessionStore,
                     session: session
-                ),
-                userDefaults: userDefaults
+                )
             )
         } else {
             self.entitlementProvider = StripeEntitlementProvider(
                 store: entitlementStore,
-                remoteValidator: nil,
-                userDefaults: userDefaults
+                remoteValidator: nil
             )
         }
     }
@@ -600,7 +535,7 @@ public actor DirectAccountProvider: AccountProvider {
         let storedSession = try await sessionStore.load()
 
         let entitlement: EntitlementState
-        if storedSession != nil || RuntimeConfiguration.isDebugEntitlementBypassEnabled() {
+        if storedSession != nil {
             entitlement = try await entitlementProvider.refresh()
         } else {
             entitlement = await entitlementProvider.currentState()
@@ -643,12 +578,6 @@ public actor DirectAccountProvider: AccountProvider {
         guard decoded.ok else {
             throw EntitlementError.invalidResponse
         }
-
-#if DEBUG
-        if let debugToken = decoded.debugToken {
-            try await completeDebugTokenSignIn(debugToken)
-        }
-#endif
     }
 
     public func handleIncomingURL(_ url: URL) async throws -> Bool {
@@ -716,29 +645,6 @@ public actor DirectAccountProvider: AccountProvider {
         try await entitlementStore.clearCachedState()
     }
 
-#if DEBUG
-    private func completeDebugTokenSignIn(_ token: String) async throws {
-        guard let configuration else {
-            throw EntitlementError.backendNotConfigured
-        }
-
-        var request = URLRequest(url: configuration.verifyDebugTokenURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw EntitlementError.invalidResponse
-        }
-
-        let decoded = try JSONDecoder().decode(VerifyResponse.self, from: data)
-        try await sessionStore.save(DirectSession(email: decoded.email, sessionToken: decoded.sessionToken))
-        _ = try await entitlementProvider.refresh()
-    }
-#endif
-
     private func fetchBillingAction(for directSession: DirectSession) async throws -> AccountState.BillingAction? {
         guard let configuration else {
             return nil
@@ -780,14 +686,8 @@ public actor MASAccountProvider: AccountProvider {
     private let entitlementProvider: StoreKitEntitlementProvider
     private let manageSubscriptionURL = URL(string: "https://apps.apple.com/account/subscriptions")
 
-    public init(
-        entitlementStore: EntitlementFileStore,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
-    ) {
-        self.entitlementProvider = StoreKitEntitlementProvider(
-            store: entitlementStore,
-            userDefaults: userDefaults
-        )
+    public init(entitlementStore: EntitlementFileStore) {
+        self.entitlementProvider = StoreKitEntitlementProvider(store: entitlementStore)
     }
 
     public func currentAccountState() async -> AccountState {
@@ -902,15 +802,14 @@ public enum EntitlementProviderFactory {
     public static func makeProvider(
         channel: DistributionChannel,
         store: EntitlementFileStore,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> EntitlementProvider {
         switch channel {
         case .mas:
-            return StoreKitEntitlementProvider(store: store, userDefaults: userDefaults)
+            return StoreKitEntitlementProvider(store: store)
         case .direct:
             _ = environment
-            return StripeEntitlementProvider(store: store, userDefaults: userDefaults)
+            return StripeEntitlementProvider(store: store)
         }
     }
 }
@@ -920,18 +819,16 @@ public enum AccountProviderFactory {
         channel: DistributionChannel,
         store: EntitlementFileStore,
         bundle: Bundle = .main,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaultsOrStandard()
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AccountProvider {
         switch channel {
         case .mas:
-            return MASAccountProvider(entitlementStore: store, userDefaults: userDefaults)
+            return MASAccountProvider(entitlementStore: store)
         case .direct:
             return DirectAccountProvider(
                 configuration: DirectServiceConfiguration.resolve(bundle: bundle, environment: environment),
                 sessionStore: DirectSessionKeychainStore(),
-                entitlementStore: store,
-                userDefaults: userDefaults
+                entitlementStore: store
             )
         }
     }

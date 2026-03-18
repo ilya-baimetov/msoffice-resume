@@ -68,6 +68,9 @@ Shared auxiliary files:
 - `logs/debug-v1.log`
 - `entitlements/entitlement-cache-v1.json`
 
+Log retention:
+- keep only the most recent 24 hours of `logs/debug-v1.log`
+
 ## Packaging Contract
 - Direct canonical artifact is `.pkg`.
 - Direct installer may upgrade an existing Direct install in place.
@@ -101,7 +104,7 @@ Shared auxiliary files:
 ## Free-Pass Invariants
 - Free-pass is backend-authoritative and tied to verified session identity.
 - Production client builds must not grant free-pass via local file or env overrides.
-- The backend may combine a checked-in hard-coded email list with env-based additions.
+- The backend may combine the checked-in hard-coded email list in `OfficeResumeBackend/src/free-pass-emails.js` with env-based additions.
 
 ## Support Matrix
 - Word, Excel, PowerPoint: document-level capture and restore

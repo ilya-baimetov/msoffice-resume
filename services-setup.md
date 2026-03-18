@@ -1,6 +1,6 @@
 # Services Setup Guide (Direct Only)
 
-This guide covers external setup for Office Resume, including a Direct local-development path that works without an Apple Developer account and a production Direct release path.
+This guide covers external setup for Office Resume, including Debug and Release package builds that use the same canonical installer path.
 
 ## 1. Distribution Tracks
 ### Track A: Direct local development and private testing
@@ -44,25 +44,21 @@ Legacy note:
 - `OfficeResumeMAS` may still exist in the repo during migration, but it is not part of the active shipping contract.
 
 ## 3. Local Debug Testing (No Apple Developer Account)
-### 3.1 Build local Debug pkg
+### 3.1 Build Debug pkg through the canonical packaging path
 ```bash
 cd ~/Projects/msoffice-resume
-./scripts/package-local-dev.sh
+CONFIGURATION=Debug ./scripts/release-direct.sh
 ```
 
-### 3.2 Install local Debug pkg
+### 3.2 Install the downloaded pkg
 ```bash
-sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
+sudo ./scripts/install-package.sh ./dist/OfficeResume.pkg
 ```
 
 ### 3.3 Verify installed apps
 - `/Applications/Office Resume.app`
 - `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 - both bundles are ad hoc signed even without a Developer ID certificate
-
-### 3.4 Enable local Debug entitlement and testing shortcuts
-- Use the Debug-only account UI and runtime opt-in inside a Debug build.
-- These shortcuts do not exist in Release behavior.
 
 ## 4. Direct Backend Setup (Cloudflare Worker)
 1. Create a Cloudflare account and install Wrangler:
@@ -86,7 +82,6 @@ wrangler login
 - `STRIPE_PRICE_MONTHLY`
 - `STRIPE_PRICE_YEARLY`
 - `FREE_PASS_EMAILS` (optional allowlist extension)
-- `ENABLE_DEBUG_MAGIC_LINK_TOKEN` (`1` only for local and dev backend testing)
 
 Checked-in allowlist file:
 - `OfficeResumeBackend/src/free-pass-emails.js`
@@ -153,7 +148,7 @@ Outputs:
 - `dist/OfficeResume-direct-unsigned.pkg`
 - `dist/release-direct/` payload
 
-Without `DEVELOPER_ID_APPLICATION`, the script still ad hoc signs the app and helper bundles for local or private installs. The pkg itself remains unsigned until `DEVELOPER_ID_INSTALLER` is provided.
+Without `DEVELOPER_ID_APPLICATION`, the script still ad hoc signs the app and helper bundles for local or private installs. The pkg itself remains unsigned until `DEVELOPER_ID_INSTALLER` is provided. The canonical installer path remains `dist/OfficeResume.pkg`.
 
 For signed and notarized release, set:
 - `DEVELOPER_ID_APPLICATION`
@@ -188,6 +183,6 @@ For the default solo workflow in this repo, local git hooks plus local review ar
 2. Implement code changes.
 3. Install repo-managed hooks once: `./scripts/install-git-hooks.sh`.
 4. Use local review and local hooks while iterating.
-5. Run or install a local Debug package if needed.
+5. Run or install a Debug package if needed through the canonical package path.
 6. Push only after local checks and tests pass.
 7. Use a PR only when you want GitHub/Copilot review or remote review history.

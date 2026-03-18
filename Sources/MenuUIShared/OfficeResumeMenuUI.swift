@@ -151,17 +151,6 @@ private struct OfficeResumeAccountView: View {
                     masContent
                 }
             }
-
-#if DEBUG
-            Divider()
-            Toggle("Enable Local Debug Pass", isOn: $model.debugEntitlementBypassEnabled)
-                .onChange(of: model.debugEntitlementBypassEnabled) { _, newValue in
-                    model.setDebugEntitlementBypassEnabled(newValue)
-                }
-            Text("Debug-only. This is a local testing shortcut and does not exist in Release builds.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-#endif
         }
         .padding(20)
         .frame(minWidth: 420)
@@ -571,10 +560,6 @@ final class OfficeResumeAccountViewModel: ObservableObject {
     @Published var emailInput = ""
     @Published var message: String?
     @Published var isWorking = false
-#if DEBUG
-    @Published var debugEntitlementBypassEnabled = RuntimeConfiguration.isDebugEntitlementBypassEnabled()
-#endif
-
     let channel: DistributionChannel
 
     private let provider: AccountProvider
@@ -699,16 +684,6 @@ final class OfficeResumeAccountViewModel: ObservableObject {
             }
         }
     }
-
-#if DEBUG
-    func setDebugEntitlementBypassEnabled(_ enabled: Bool) {
-        RuntimeConfiguration.setDebugEntitlementBypassEnabled(enabled)
-        debugEntitlementBypassEnabled = enabled
-        message = enabled ? "Local Debug Pass enabled." : "Local Debug Pass disabled."
-        DaemonSharedIPC.postRefreshEntitlement()
-        refresh()
-    }
-#endif
 
     private func handleIncomingURL(_ url: URL) {
         Task {

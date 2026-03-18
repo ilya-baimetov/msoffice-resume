@@ -23,7 +23,21 @@ async function stripeSignature(secret, timestamp, payload) {
   return hex(digest);
 }
 
-async function signInWithDebugToken(app, email) {
+function createMagicLinkApp(store, options = {}) {
+  const sent = [];
+  const app = createApp(store, {
+    ...options,
+    emailSender: async (payload) => {
+      sent.push(payload);
+      if (options.emailSender) {
+        await options.emailSender(payload);
+      }
+    },
+  });
+  return { app, sent };
+}
+
+async function signInWithMagicLink(app, sent, email) {
   const linkResponse = await app(new Request("https://example.com/auth/request-link", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -31,41 +45,32 @@ async function signInWithDebugToken(app, email) {
   }));
   const linkBody = await linkResponse.json();
 
-  const verifyResponse = await app(new Request("https://example.com/auth/verify", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: linkBody.debugToken }),
-  }));
-  const verifyBody = await verifyResponse.json();
-  return { linkBody, verifyBody };
+  assert.equal(linkResponse.status, 202);
+  assert.equal(linkBody.ok, true);
+  assert.equal("debugToken" in linkBody, false);
+  assert.ok(sent.length > 0);
+
+  const verifyURL = sent[sent.length - 1].verifyURL;
+  const verifyResponse = await app(new Request(verifyURL));
+  assert.equal(verifyResponse.status, 302);
+  const location = verifyResponse.headers.get("location");
+  const callbackURL = new URL(location);
+  const verifyBody = {
+    ok: true,
+    sessionToken: callbackURL.searchParams.get("sessionToken"),
+    email: callbackURL.searchParams.get("email"),
+  };
+  return { linkBody, verifyBody, location };
 }
 
-test("debug request-link returns a 256-bit token only when explicitly enabled", async () => {
+test("request-link sends email and does not expose the raw token", async () => {
   const store = new InMemoryEntitlementStore();
-  const app = createApp(store, { enableDebugMagicLinkTokens: true });
+  const { app, sent } = createMagicLinkApp(store);
 
   const response = await app(new Request("https://example.com/auth/request-link", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: "debug@example.com" }),
-  }));
-
-  assert.equal(response.status, 202);
-  const body = await response.json();
-  assert.match(body.debugToken, /^[a-f0-9]{64}$/);
-});
-
-test("production request-link sends email and does not expose the raw token", async () => {
-  const store = new InMemoryEntitlementStore();
-  const sent = [];
-  const app = createApp(store, {
-    emailSender: async (payload) => sent.push(payload),
-  });
-
-  const response = await app(new Request("https://example.com/auth/request-link", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "user@example.com" }),
   }));
 
   assert.equal(response.status, 202);
@@ -79,12 +84,9 @@ test("production request-link sends email and does not expose the raw token", as
 test("auth flow returns a persistent 14-day trial window", async () => {
   let now = Date.UTC(2026, 0, 1);
   const store = new InMemoryEntitlementStore(() => now);
-  const app = createApp(store, {
-    now: () => now,
-    enableDebugMagicLinkTokens: true,
-  });
+  const { app, sent } = createMagicLinkApp(store, { now: () => now });
 
-  const { verifyBody } = await signInWithDebugToken(app, "user@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "user@example.com");
 
   let entitlementResponse = await app(new Request("https://example.com/entitlements/current", {
     method: "GET",
@@ -116,12 +118,11 @@ test("auth flow returns a persistent 14-day trial window", async () => {
 
 test("free pass email bypasses billing checks only after verified auth", async () => {
   const store = new InMemoryEntitlementStore();
-  const app = createApp(store, {
+  const { app, sent } = createMagicLinkApp(store, {
     freePassEmails: "vip@example.com",
-    enableDebugMagicLinkTokens: true,
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "vip@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "vip@example.com");
 
   const entitlementResponse = await app(new Request("https://example.com/entitlements/current", {
     method: "GET",
@@ -136,8 +137,7 @@ test("free pass email bypasses billing checks only after verified auth", async (
 
 test("billing entry requires a valid session and returns a pricing page URL for signed-in non-paid users", async () => {
   const store = new InMemoryEntitlementStore();
-  const app = createApp(store, {
-    enableDebugMagicLinkTokens: true,
+  const { app, sent } = createMagicLinkApp(store, {
     checkoutSessionFactory: async () => "https://checkout.stripe.com/pay/cs_test",
   });
 
@@ -146,7 +146,7 @@ test("billing entry requires a valid session and returns a pricing page URL for 
   }));
   assert.equal(unauthorizedResponse.status, 401);
 
-  const { verifyBody } = await signInWithDebugToken(app, "billable@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "billable@example.com");
   const response = await app(new Request("https://example.com/billing/entry", {
     method: "GET",
     headers: { authorization: `Bearer ${verifyBody.sessionToken}` },
@@ -161,13 +161,12 @@ test("billing entry requires a valid session and returns a pricing page URL for 
 
 test("billing entry returns no action for free-pass users", async () => {
   const store = new InMemoryEntitlementStore();
-  const app = createApp(store, {
+  const { app, sent } = createMagicLinkApp(store, {
     freePassEmails: "vip@example.com",
-    enableDebugMagicLinkTokens: true,
     checkoutSessionFactory: async () => "https://checkout.stripe.com/pay/cs_test",
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "vip@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "vip@example.com");
   const response = await app(new Request("https://example.com/billing/entry", {
     method: "GET",
     headers: { authorization: `Bearer ${verifyBody.sessionToken}` },
@@ -212,16 +211,15 @@ test("checkout endpoint creates a checkout session with verified email and remai
   let now = Date.UTC(2026, 0, 1);
   const store = new InMemoryEntitlementStore(() => now);
   const captured = [];
-  const app = createApp(store, {
+  const { app, sent } = createMagicLinkApp(store, {
     now: () => now,
-    enableDebugMagicLinkTokens: true,
     checkoutSessionFactory: async (payload) => {
       captured.push(payload);
       return "https://checkout.stripe.com/pay/cs_test_123";
     },
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "trialing@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "trialing@example.com");
   const entryResponse = await app(new Request("https://example.com/billing/entry", {
     method: "GET",
     headers: { authorization: `Bearer ${verifyBody.sessionToken}` },
@@ -248,16 +246,15 @@ test("checkout endpoint rounds short remaining trial into Stripe-supported trial
   let now = Date.UTC(2026, 0, 1);
   const store = new InMemoryEntitlementStore(() => now);
   const captured = [];
-  const app = createApp(store, {
+  const { app, sent } = createMagicLinkApp(store, {
     now: () => now,
-    enableDebugMagicLinkTokens: true,
     checkoutSessionFactory: async (payload) => {
       captured.push(payload);
       return "https://checkout.stripe.com/pay/cs_short_trial";
     },
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "almostdone@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "almostdone@example.com");
   now += 13.5 * 24 * 60 * 60 * 1000;
 
   const entryResponse = await app(new Request("https://example.com/billing/entry", {
@@ -318,12 +315,11 @@ test("paid users receive a manage-subscription billing action backed by the port
     customerID: "cus_paid_123",
   });
 
-  const app = createApp(store, {
-    enableDebugMagicLinkTokens: true,
+  const { app, sent } = createMagicLinkApp(store, {
     billingPortalFactory: async () => "https://billing.stripe.com/session/test_portal",
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "paid@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "paid@example.com");
   const response = await app(new Request("https://example.com/billing/entry", {
     method: "GET",
     headers: { authorization: `Bearer ${verifyBody.sessionToken}` },
@@ -357,13 +353,12 @@ test("stripe webhook accepts valid signatures and updates entitlement", async ()
   const fixedNow = Date.now();
   const store = new InMemoryEntitlementStore(() => fixedNow);
   const webhookSecret = "whsec_test_valid";
-  const app = createApp(store, {
+  const { app, sent } = createMagicLinkApp(store, {
     stripeWebhookSecret: webhookSecret,
     now: () => fixedNow,
-    enableDebugMagicLinkTokens: true,
   });
 
-  const { verifyBody } = await signInWithDebugToken(app, "sig@example.com");
+  const { verifyBody } = await signInWithMagicLink(app, sent, "sig@example.com");
 
   const nowUnix = Math.floor(fixedNow / 1000);
   const payload = JSON.stringify({
@@ -417,22 +412,13 @@ test("stripe webhook accepts valid signatures and updates entitlement", async ()
 
 test("magic link verify endpoint redirects to app callback URL", async () => {
   const store = new InMemoryEntitlementStore();
-  const app = createApp(store, {
-    enableDebugMagicLinkTokens: true,
+  const { app, sent } = createMagicLinkApp(store, {
     callbackScheme: "officeresume-direct",
     callbackHost: "auth",
     callbackPath: "/complete",
   });
 
-  const linkResponse = await app(new Request("https://example.com/auth/request-link", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "callback@example.com" }),
-  }));
-  const linkBody = await linkResponse.json();
-  const response = await app(new Request(`https://example.com/auth/verify?token=${linkBody.debugToken}`));
-  assert.equal(response.status, 302);
-  const location = response.headers.get("location");
+  const { location } = await signInWithMagicLink(app, sent, "callback@example.com");
   assert.match(location, /^officeresume-direct:\/\/auth\/complete\?/);
   assert.match(location, /sessionToken=/);
   assert.match(location, /email=callback%40example.com/);

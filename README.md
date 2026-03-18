@@ -61,17 +61,17 @@ Manual local check helper:
 ./scripts/check-local.sh full
 ```
 
-## Local Debug Build and Install
+## Build and Install a Downloaded Package
 No Apple Developer account is required for local Debug builds.
 
-Build a local Debug installer package:
+Build the downloaded installer package through the same canonical script used for release packaging:
 ```bash
-./scripts/package-local-dev.sh
+CONFIGURATION=Debug ./scripts/release-direct.sh
 ```
 
 Install locally:
 ```bash
-sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg
+sudo ./scripts/install-package.sh ./dist/OfficeResume.pkg
 ```
 
 Installed paths:
@@ -79,11 +79,10 @@ Installed paths:
 - `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
 Notes:
-- Local Debug package is convenience-only and non-canonical for public distribution.
-- Local Debug package ad hoc signs the app and helper bundles for local testing without requiring an Apple Developer certificate.
-- Canonical public artifact is the pkg produced by `./scripts/release-direct.sh`.
+- Debug and Release builds use the same packaged installer path.
+- Debug builds ad hoc sign the app and helper bundles for local testing without requiring an Apple Developer certificate.
+- Canonical installer path is the pkg produced at `dist/OfficeResume.pkg`.
 - Accessibility and Apple Events permissions are requested after install when the app actually needs them.
-- Debug-only entitlement bypass remains available only when explicitly enabled at runtime in a Debug build.
 
 ## Direct Release Packaging
 Build Direct release artifacts:
@@ -93,6 +92,7 @@ Build Direct release artifacts:
 
 Outputs:
 - `dist/OfficeResume-direct-unsigned.pkg`
+- `dist/OfficeResume.pkg`
 - `dist/release-direct/` (staged app payload)
 
 Behavior without Developer ID signing:
@@ -131,7 +131,7 @@ Legacy note:
 
 ## Build Modes
 ### Debug local build
-- works without production backend if you use Debug-only local shortcuts
+- uses the same packaged install path as release
 - suitable for local feature testing and restore verification
 
 ### ReleaseDirect
@@ -179,10 +179,5 @@ Primary jobs:
 
 `pr-scorecard-guardrail` matters only when you choose to use a PR.
 
-## Debug-Only Entitlement Bypass
-For local Debug builds only, an explicit bypass can be enabled from the Debug account UI and runtime opt-in path.
-
-It is:
-- non-default
-- Debug-only
-- not part of Release behavior
+## Log Retention
+Local debug logs are trimmed to the most recent 24 hours.

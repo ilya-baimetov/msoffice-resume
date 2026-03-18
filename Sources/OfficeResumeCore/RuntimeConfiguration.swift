@@ -9,8 +9,6 @@ public enum RuntimeConfiguration {
     public static let bundlePrefix = "com.pragprod.msofficeresume"
     public static let sharedDefaultsSuiteName = "group.\(bundlePrefix)"
     private static let channelKey = "\(bundlePrefix).distribution-channel"
-    private static let debugEntitlementBypassKey = "OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS"
-    private static let debugEntitlementBypassDefaultsKey = "\(bundlePrefix).debug-entitlement-bypass-enabled"
     private static let directBackendBaseURLEnvKey = "OFFICE_RESUME_DIRECT_BACKEND_BASE_URL"
 
     public static func sharedDefaults(
@@ -81,35 +79,6 @@ public enum RuntimeConfiguration {
         return try applicationSupportRoot(fileManager: fileManager, bundlePrefix: bundlePrefix)
     }
 
-    public static func isDebugEntitlementBypassEnabled(
-        userDefaults: UserDefaults = sharedDefaultsOrStandard(),
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> Bool {
-#if DEBUG
-        if isEnabled(environment[debugEntitlementBypassKey]) {
-            return true
-        }
-        return userDefaults.bool(forKey: debugEntitlementBypassDefaultsKey)
-#else
-        _ = userDefaults
-        _ = environment
-        return false
-#endif
-    }
-
-    public static func setDebugEntitlementBypassEnabled(
-        _ enabled: Bool,
-        userDefaults: UserDefaults = sharedDefaultsOrStandard()
-    ) {
-#if DEBUG
-        userDefaults.set(enabled, forKey: debugEntitlementBypassDefaultsKey)
-        userDefaults.synchronize()
-#else
-        _ = enabled
-        _ = userDefaults
-#endif
-    }
-
     public static func directBackendBaseURL(
         bundle: Bundle = .main,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -139,19 +108,6 @@ public enum RuntimeConfiguration {
             .appendingPathComponent(bundlePrefix, isDirectory: true)
     }
 
-    private static func isEnabled(_ rawValue: String?) -> Bool {
-        guard let rawValue else {
-            return false
-        }
-
-        switch rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "1", "true", "yes", "on":
-            return true
-        default:
-            return false
-        }
-    }
-
     private static func defaultLegacyDefaultsDomainNames(bundle: Bundle = .main) -> [String] {
         let candidates = [
             bundle.bundleIdentifier,
@@ -174,7 +130,6 @@ public enum RuntimeConfiguration {
     ) {
         let keys = [
             channelKey,
-            debugEntitlementBypassDefaultsKey,
         ]
 
         var didChange = false

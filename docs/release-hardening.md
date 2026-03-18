@@ -10,6 +10,7 @@ Run:
 
 Outputs:
 - `dist/OfficeResume-direct-unsigned.pkg`
+- `dist/OfficeResume.pkg`
 - `dist/release-direct/` (staged payload with `Office Resume.app`, containing embedded `Contents/Library/LoginItems/OfficeResumeHelper.app`)
 
 The package uses a stable package identifier and version and supports upgrade installs.
@@ -32,6 +33,7 @@ Rerun:
 Result:
 - app bundles are codesigned and verified
 - signed package produced at `dist/OfficeResume-direct-signed.pkg`
+- canonical installer path updated at `dist/OfficeResume.pkg`
 
 ## 3. Notarize
 Store credentials once:
@@ -77,6 +79,7 @@ Required release expectations:
 - Apple Events prompts are bounded and do not fan out into repeated dialogs
 - Signed app and helper identities remain stable across updates
 - AX and Apple Events logic is serialized enough to avoid prompt storms under focus churn
+- Local debug logs are trimmed to the most recent 24 hours
 
 ## 6. CI And Review Gates
 Required PR checks when using a PR:

@@ -13,6 +13,7 @@ COMPONENT_PLIST="$OUT_DIR/components.plist"
 PKG_SCRIPTS_DIR="$REPO_ROOT/scripts/pkg/direct"
 UNSIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-unsigned.pkg"
 SIGNED_PKG="$REPO_ROOT/dist/OfficeResume-direct-signed.pkg"
+CANONICAL_PKG="$REPO_ROOT/dist/OfficeResume.pkg"
 CONFIGURATION="${CONFIGURATION:-Release}"
 PKG_IDENTIFIER="${DIRECT_PKG_IDENTIFIER:-com.pragprod.msofficeresume.direct}"
 PKG_VERSION="${DIRECT_PKG_VERSION:-$(date +%Y.%m.%d.%H%M)}"
@@ -48,7 +49,7 @@ if [[ ! -d "$WORKSPACE" || "$PROJECT_YML" -nt "$PROJECT_FILE" ]]; then
   (cd "$REPO_ROOT" && xcodegen generate)
 fi
 
-rm -rf "$BUILD_DIR" "$OUT_DIR" "$UNSIGNED_PKG" "$SIGNED_PKG"
+rm -rf "$BUILD_DIR" "$OUT_DIR" "$UNSIGNED_PKG" "$SIGNED_PKG" "$CANONICAL_PKG"
 mkdir -p "$BUILD_DIR" "$OUT_DIR"
 
 build_target() {
@@ -203,6 +204,8 @@ else
   echo "DEVELOPER_ID_INSTALLER not set; pkg remains unsigned."
 fi
 
+cp "$FINAL_PKG" "$CANONICAL_PKG"
+
 cat <<MSG
 
 Release output ready.
@@ -211,6 +214,9 @@ App payload folder:
   $OUT_DIR
 
 Canonical installer package:
+  $CANONICAL_PKG
+
+Resolved source package:
   $FINAL_PKG
 
 Pkg metadata:

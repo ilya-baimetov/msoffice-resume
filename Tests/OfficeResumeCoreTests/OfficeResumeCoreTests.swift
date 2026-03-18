@@ -314,31 +314,6 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertFalse(expiredGrace.isActive)
     }
 
-    func testDebugEntitlementBypassRequiresExplicitFlag() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let defaults = makeIsolatedUserDefaults(name: "debug-bypass")
-        let disabled = DebugEntitlementBypassEvaluator.overrideState(
-            now: now,
-            userDefaults: defaults,
-            environment: [:]
-        )
-        XCTAssertNil(disabled)
-
-        let enabled = DebugEntitlementBypassEvaluator.overrideState(
-            now: now,
-            userDefaults: defaults,
-            environment: ["OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS": "1"]
-        )
-
-#if DEBUG
-        XCTAssertNotNil(enabled)
-        XCTAssertEqual(enabled?.isActive, true)
-        XCTAssertEqual(enabled?.plan, .yearly)
-#else
-        XCTAssertNil(enabled)
-#endif
-    }
-
     func testRuntimeConfigurationUsesStoredDirectChannel() {
         let suiteName = "OfficeResumeTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -356,7 +331,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         )
     }
 
-    func testSharedDefaultsMigratesLegacyRuntimeFlagsIntoSharedSuite() {
+    func testSharedDefaultsMigratesLegacyRuntimeChannelIntoSharedSuite() {
         let sharedSuiteName = "OfficeResumeTests.Shared.\(UUID().uuidString)"
         let legacySuiteName = "OfficeResumeTests.Legacy.\(UUID().uuidString)"
         guard let legacyDefaults = UserDefaults(suiteName: legacySuiteName) else {
@@ -366,8 +341,6 @@ final class OfficeResumeCoreTests: XCTestCase {
 
         legacyDefaults.removePersistentDomain(forName: legacySuiteName)
         legacyDefaults.set("direct", forKey: "com.pragprod.msofficeresume.distribution-channel")
-        legacyDefaults.set(true, forKey: "com.pragprod.msofficeresume.debug-entitlement-bypass-enabled")
-
         let sharedDefaults = RuntimeConfiguration.sharedDefaults(
             suiteName: sharedSuiteName,
             legacyDomainNames: [legacySuiteName]
@@ -377,17 +350,28 @@ final class OfficeResumeCoreTests: XCTestCase {
             RuntimeConfiguration.distributionChannel(userDefaults: sharedDefaults, environment: [:]),
             .direct
         )
-#if DEBUG
-        XCTAssertTrue(
-            RuntimeConfiguration.isDebugEntitlementBypassEnabled(
-                userDefaults: sharedDefaults,
-                environment: [:]
-            )
-        )
-#endif
 
         sharedDefaults.removePersistentDomain(forName: sharedSuiteName)
         legacyDefaults.removePersistentDomain(forName: legacySuiteName)
+    }
+
+    func testDebugLogRetentionTrimsEntriesOlderThan24Hours() throws {
+        let tempRoot = makeTempDirectory(name: "debug-log-retention")
+        let logURL = tempRoot
+            .appendingPathComponent("logs", isDirectory: true)
+            .appendingPathComponent("debug-v1.log")
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let oldLine = "\(Self.isoFormatter.string(from: now.addingTimeInterval(-(25 * 60 * 60)))) [INFO] old old=true\n"
+        let newLine = "\(Self.isoFormatter.string(from: now.addingTimeInterval(-(60 * 60)))) [INFO] new keep=true\n"
+        try Data((oldLine + newLine).utf8).write(to: logURL, options: .atomic)
+
+        try DebugLog.trimLogHistory(now: now, baseDirectoryOverride: tempRoot)
+
+        let contents = try String(contentsOf: logURL)
+        XCTAssertFalse(contents.contains("old=true"))
+        XCTAssertTrue(contents.contains("keep=true"))
     }
 
     func testForceSaveUntitledPersistsRealArtifactAndIndex() async throws {
@@ -981,9 +965,7 @@ final class OfficeResumeCoreTests: XCTestCase {
     ) -> CachedEntitlementProvider {
         return CachedEntitlementProvider(
             store: store,
-            now: now,
-            overrideEnvironment: [:],
-            userDefaults: makeIsolatedUserDefaults(name: "cached-entitlement")
+            now: now
         )
     }
 
@@ -1015,16 +997,12 @@ final class OfficeResumeCoreTests: XCTestCase {
             callbackScheme: "officeresume-direct"
         )
         let session = try Self.makeMockSession(requestHandler: requestHandler)
-        let userDefaultsSuite = "OfficeResumeTests.DirectAccount.\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: userDefaultsSuite) ?? .standard
-        userDefaults.removePersistentDomain(forName: userDefaultsSuite)
 
         return DirectAccountProvider(
             configuration: configuration,
             sessionStore: sessionStore,
             entitlementStore: store,
-            session: session,
-            userDefaults: userDefaults
+            session: session
         )
     }
 
@@ -1079,6 +1057,12 @@ final class OfficeResumeCoreTests: XCTestCase {
         )!
         return (response, Data())
     }
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 private struct MockScriptExecutor: ScriptExecuting {

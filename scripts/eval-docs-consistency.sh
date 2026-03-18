@@ -170,6 +170,12 @@ require_pattern "services-setup.md" "Worker-hosted pricing page|Worker-hosted pr
 require_pattern "AGENTS.md" "AXObserver|Accessibility notifications" "AGENTS documents AX-first capture"
 require_pattern "PRD.md" "Accessibility: click to fix" "PRD documents Accessibility UI"
 require_pattern "spec.md" "NSWorkspace" "spec documents NSWorkspace as secondary lifecycle input"
+require_pattern "README.md" "install-package\\.sh" "README documents canonical package installer script"
+require_pattern "README.md" "OfficeResume\\.pkg" "README documents canonical package path"
+require_pattern "services-setup.md" "install-package\\.sh" "services setup documents canonical package installer script"
+require_pattern "AGENTS.md" "free-pass-emails\\.js" "AGENTS documents checked-in free-pass file"
+require_pattern_in_set "24 hours|24-hour" "Checked docs document 24-hour log retention" \
+  "AGENTS.md" "PRD.md" "spec.md" "specs/core.md" "README.md"
 require_pattern "docs/direct-only-ax-decision-memo.md" "## Decision" "decision memo has explicit decision section"
 require_pattern "docs/direct-only-ax-migration-plan.md" "## Phase 0 - Contract Reset" "migration plan has phased rollout"
 
@@ -204,6 +210,8 @@ echo "== Direct Billing Drift Checks =="
 
 forbid_pattern_in_set "STRIPE_SUBSCRIBE_URL" "No stale STRIPE_SUBSCRIBE_URL references in checked docs" "${CHECK_DOCS[@]}"
 forbid_pattern_in_set "Payment Link|Payment Links|shareable payment link" "No Payment Link terminology in checked docs" "${CHECK_DOCS[@]}"
+forbid_pattern_in_set "package-local-dev|install-local-dev|OfficeResume-local-dev\\.pkg" "No stale local-dev package names in checked docs" "${CHECK_DOCS[@]}"
+forbid_pattern_in_set "Debug-only entitlement bypass|debug entitlement bypass|Enable Local Debug Pass|ENABLE_DEBUG_MAGIC_LINK_TOKEN" "No stale debug bypass terminology in checked docs" "${CHECK_DOCS[@]}"
 require_pattern "specs/backend-worker.md" "GET /billing/entry" "Backend spec documents billing entry endpoint"
 require_pattern "specs/backend-worker.md" "GET /billing/pricing" "Backend spec documents pricing page endpoint"
 require_pattern "specs/backend-worker.md" "POST /billing/checkout" "Backend spec documents checkout endpoint"

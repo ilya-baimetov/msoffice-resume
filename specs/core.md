@@ -48,8 +48,8 @@ Shared business logic and contracts used by the helper and the menu/account UI.
 - Production path uses verified backend auth and Keychain-backed session handling.
 - Shared account state surfaces an optional billing action (`subscribe` or `manageSubscription`).
 - Billing action resolution comes from the backend so paid, unpaid, and free-pass states remain server-authoritative.
-- Any local bypass is debug-only, compile-time gated, explicit, and non-default.
 - Hard-coded friends-and-family free-pass emails belong on the backend side only.
+- Local debug logs are retained for at most 24 hours.
 
 ## Direct-Only Requirements
 - Do not add MAS-specific storage, restore, or UI behavior in core.
