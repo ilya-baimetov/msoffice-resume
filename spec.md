@@ -179,7 +179,7 @@ XPC-facing API:
 - Receive Direct auth callback URLs and hand them to the Direct account provider.
 - Start helper via `SMAppService` and sibling-launch fallback.
 - `Quit` terminates both menu app and helper.
-- Accessibility remediation is owned by the menu app.
+- Accessibility remediation is initiated from the menu app but executed by the helper so the helper can request trust for its own process identity.
 
 ### 6.3 Core Storage and Engine
 - Snapshot storage, event log persistence, temp artifact indexing.

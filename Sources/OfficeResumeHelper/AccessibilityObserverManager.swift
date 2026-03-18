@@ -47,6 +47,11 @@ final class AccessibilityObserverManager {
         AXIsProcessTrusted()
     }
 
+    func requestTrustPrompt() -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
+
     func syncObservedApplications() {
         let runningSupportedApps = NSWorkspace.shared.runningApplications.compactMap { runningApp -> (OfficeApp, NSRunningApplication)? in
             guard

@@ -150,7 +150,7 @@ Direct only:
 
 ### FR-8 Accessibility and Automation UX
 - Menu surfaces Accessibility status and remediation.
-- `Accessibility: click to fix` opens System Settings to the relevant pane.
+- `Accessibility: click to fix` asks the helper to prompt for Accessibility trust and opens the relevant System Settings pane if needed.
 - App must not repeatedly re-prompt for Accessibility after the user has already granted it to the current signed build.
 - Apple Events consent must be bounded; a single focus/permission churn loop must not fan out into repeated dialogs.
 

@@ -128,6 +128,7 @@ final class HelperDaemonController {
 
     private let deactivateCaptureDebounceNanoseconds: UInt64 = 350_000_000
     private let axCaptureDebounceNanoseconds: UInt64 = 250_000_000
+    private let startupCaptureDelayNanoseconds: UInt64 = 750_000_000
     private let warmupCaptureIntervalNanoseconds: UInt64 = 1_000_000_000
     private let warmupCaptureAttempts: Int = 5
     private let safetySweepIntervalNanoseconds: UInt64 = 30_000_000_000
@@ -181,7 +182,7 @@ final class HelperDaemonController {
             await refreshEntitlementStatus()
             await refreshAccessibilityState(reason: "startup")
             await syncSnapshotTimestamps()
-            await reconcileFrontmostAppAtStartup()
+            await reconcileRunningAppsAtStartup()
         }
     }
 
@@ -703,36 +704,50 @@ final class HelperDaemonController {
         }
     }
 
-    private func reconcileFrontmostAppAtStartup() async {
-        guard let app = frontmostSupportedApp(),
-              let runningApplication = runningApplication(for: app)
-        else {
+    private func reconcileRunningAppsAtStartup() async {
+        let runningApps = runningSupportedApplications()
+        guard !runningApps.isEmpty else {
             return
         }
 
         DebugLog.debug(
-            "Reconciling frontmost app at startup",
-            metadata: ["app": app.rawValue]
+            "Reconciling running apps at startup",
+            metadata: ["count": "\(runningApps.count)"]
         )
 
-        let didAttemptRestore: Bool
-        if !isPaused, await entitlementProvider.canRestore() {
-            _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
-            didAttemptRestore = true
-        } else {
-            didAttemptRestore = false
+        let canRestore = await entitlementProvider.canRestore()
+        let shouldAttemptRestore = !isPaused && canRestore
+        let canCapture = await canCaptureState()
+
+        for (app, runningApplication) in runningApps {
+            DebugLog.debug(
+                "Startup reconciliation target",
+                metadata: [
+                    "app": app.rawValue,
+                    "pid": "\(runningApplication.processIdentifier)",
+                ]
+            )
+
+            if shouldAttemptRestore {
+                _ = await performRestore(app: app, source: "startup", runningApplication: runningApplication)
+                if OfficeBundleRegistry.documentRestoreApps.contains(app) {
+                    startWarmupCaptureIfNeeded(for: app, source: "startup-warmup")
+                }
+            }
+
+            guard canCapture else {
+                continue
+            }
+
+            scheduleCapture(app: app, source: "startup", after: startupCaptureDelayNanoseconds)
         }
 
-        guard await canCaptureState() else {
+        guard canCapture else {
             return
         }
 
-        if !didAttemptRestore {
-            enqueueCaptureWork(app: app, source: "startup")
-        }
-
-        if captureBackoffUntil[app] == nil {
-            await startSafetySweepIfNeeded(for: app, reason: "startup")
+        if let frontmostApp = frontmostSupportedApp(), captureBackoffUntil[frontmostApp] == nil {
+            await startSafetySweepIfNeeded(for: frontmostApp, reason: "startup")
         }
     }
 
@@ -836,18 +851,32 @@ final class HelperDaemonController {
     }
 
     private func openAccessibilitySettings() async -> Bool {
+        if axObserverManager.isTrusted() {
+            await refreshAccessibilityState(reason: "accessibility-already-trusted")
+            return true
+        }
+
+        _ = axObserverManager.requestTrustPrompt()
+
         let urls: [String] = [
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
             "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
         ]
 
+        var opened = false
         for raw in urls {
             if let url = URL(string: raw), NSWorkspace.shared.open(url) {
-                return true
+                opened = true
+                break
             }
         }
 
-        return NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+        if !opened {
+            opened = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+        }
+
+        scheduleAccessibilityRefreshFollowUp()
+        return opened
     }
 
     private func lifecycleDetails(type: LifecycleEventType, runningApplication: NSRunningApplication?) -> [String: String] {
@@ -1393,6 +1422,25 @@ final class HelperDaemonController {
         return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
     }
 
+    private func runningSupportedApplications() -> [(OfficeApp, NSRunningApplication)] {
+        let frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let running = supportedCaptureApps().compactMap { app -> (OfficeApp, NSRunningApplication)? in
+            guard let runningApplication = runningApplication(for: app) else {
+                return nil
+            }
+            return (app, runningApplication)
+        }
+
+        return running.sorted { lhs, rhs in
+            let lhsFrontmost = lhs.1.bundleIdentifier == frontmostBundleID
+            let rhsFrontmost = rhs.1.bundleIdentifier == frontmostBundleID
+            if lhsFrontmost != rhsFrontmost {
+                return lhsFrontmost
+            }
+            return lhs.0.rawValue < rhs.0.rawValue
+        }
+    }
+
     private func frontmostSupportedApp() -> OfficeApp? {
         OfficeBundleRegistry.app(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
             .flatMap { supportedCaptureApps().contains($0) ? $0 : nil }
@@ -1400,6 +1448,23 @@ final class HelperDaemonController {
 
     private func publishStatus() {
         DaemonSharedIPC.publishStatus(stateStore.currentStatus())
+    }
+
+    private func scheduleAccessibilityRefreshFollowUp() {
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            for delaySeconds in [0.5, 2.0] {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                } catch {
+                    return
+                }
+                await self.refreshAccessibilityState(reason: "accessibility-follow-up")
+            }
+        }
     }
 }
 

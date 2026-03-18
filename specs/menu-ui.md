@@ -37,7 +37,7 @@ Legacy note:
 - Do not show a dedicated OneNote unsupported row or message.
 - Fetch or refresh status on app startup, menu open, shared-status updates, and user actions.
 - Use bounded retry and backoff while establishing helper connectivity.
-- `Accessibility: click to fix` opens the relevant System Settings pane.
+- `Accessibility: click to fix` asks the helper to request trust for its own process and opens the relevant System Settings pane if needed.
 - `Autostart: click to fix` opens Login Items settings.
 
 ## Account Window Behavior

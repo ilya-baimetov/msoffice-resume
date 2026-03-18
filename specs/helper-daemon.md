@@ -22,6 +22,7 @@ Background runtime that monitors Office state and performs restore actions.
 - On helper startup:
   - refresh entitlement state
   - reconcile currently running supported Office apps in a bounded serialized order
+  - schedule a delayed startup capture for each already-running supported Office app after startup reconciliation
   - publish helper-running status
 - Per supported Office app:
   - maintain one serialized mailbox for lifecycle events, AX events, restore commands, and scheduled capture work
@@ -58,6 +59,7 @@ Background runtime that monitors Office state and performs restore actions.
 - Publish daemon status JSON to shared IPC path.
 - Observe distributed notification commands (`pause`, `restore-now`, `clear-snapshot`, `refresh-entitlement`, `quit-helper`, `open-accessibility-settings`) and route them to controller handlers.
 - Helper runtime assumes Accessibility is required and surfaces that operationally.
+- Helper-owned Accessibility remediation must prompt trust for the helper process itself before falling back to opening System Settings.
 - Helper runtime serializes Apple Events so consent or focus churn cannot create prompt storms.
 
 ## Reliability Requirements

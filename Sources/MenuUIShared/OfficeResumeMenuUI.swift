@@ -378,18 +378,22 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     }
 
     func openAccessibilitySettings() {
-        if openAccessibilitySettingsLocally() {
-            requestStatusRefresh(reason: "open-accessibility-settings")
-            return
-        }
-
         client.openAccessibilitySettings { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
-                if case .failure = result {
+                switch result {
+                case .success(let handled) where handled:
+                    break
+                case .success:
+                    _ = self.openAccessibilitySettingsLocally()
+                case .failure:
                     DaemonSharedIPC.postOpenAccessibilitySettings()
+                    _ = self.openAccessibilitySettingsLocally()
                 }
                 self.requestStatusRefresh(reason: "open-accessibility-settings")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.requestStatusRefresh(reason: "open-accessibility-settings-follow-up")
+                }
             }
         }
     }
