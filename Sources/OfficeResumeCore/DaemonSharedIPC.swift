@@ -5,6 +5,7 @@ public enum DaemonSharedIPC {
     public static let pauseCommandName = Notification.Name("com.pragprod.msofficeresume.command.pause")
     public static let restoreCommandName = Notification.Name("com.pragprod.msofficeresume.command.restore-now")
     public static let clearSnapshotCommandName = Notification.Name("com.pragprod.msofficeresume.command.clear-snapshot")
+    public static let openAccessibilitySettingsCommandName = Notification.Name("com.pragprod.msofficeresume.command.open-accessibility-settings")
     public static let refreshEntitlementCommandName = Notification.Name("com.pragprod.msofficeresume.command.refresh-entitlement")
     public static let quitHelperCommandName = Notification.Name("com.pragprod.msofficeresume.command.quit-helper")
     public static let pausedUserInfoKey = "paused"
@@ -84,6 +85,16 @@ public enum DaemonSharedIPC {
             clearSnapshotCommandName,
             object: nil,
             userInfo: userInfo,
+            deliverImmediately: true
+        )
+    }
+
+    public static func postOpenAccessibilitySettings() {
+        let center = DistributedNotificationCenter.default()
+        center.postNotificationName(
+            openAccessibilitySettingsCommandName,
+            object: nil,
+            userInfo: nil,
             deliverImmediately: true
         )
     }

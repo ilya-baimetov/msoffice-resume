@@ -28,11 +28,13 @@ public protocol DaemonXPC {
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (RestoreCommandResultDTO) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
+    func openAccessibilitySettings(_ reply: @escaping (Bool) -> Void)
 }
 
 public struct DaemonStatusDTO: Codable {
     public let isPaused: Bool
     public let helperRunning: Bool
+    public let accessibilityTrusted: Bool
     public let entitlementActive: Bool
     public let entitlementPlan: EntitlementState.Plan
     public let entitlementValidUntil: Date?
@@ -40,9 +42,22 @@ public struct DaemonStatusDTO: Codable {
     public let latestSnapshotCapturedAt: [OfficeApp: Date]
     public let unsupportedApps: [OfficeApp]
 
+    private enum CodingKeys: String, CodingKey {
+        case isPaused
+        case helperRunning
+        case accessibilityTrusted
+        case entitlementActive
+        case entitlementPlan
+        case entitlementValidUntil
+        case entitlementTrialEndsAt
+        case latestSnapshotCapturedAt
+        case unsupportedApps
+    }
+
     public init(
         isPaused: Bool,
         helperRunning: Bool,
+        accessibilityTrusted: Bool = false,
         entitlementActive: Bool,
         entitlementPlan: EntitlementState.Plan,
         entitlementValidUntil: Date?,
@@ -52,12 +67,39 @@ public struct DaemonStatusDTO: Codable {
     ) {
         self.isPaused = isPaused
         self.helperRunning = helperRunning
+        self.accessibilityTrusted = accessibilityTrusted
         self.entitlementActive = entitlementActive
         self.entitlementPlan = entitlementPlan
         self.entitlementValidUntil = entitlementValidUntil
         self.entitlementTrialEndsAt = entitlementTrialEndsAt
         self.latestSnapshotCapturedAt = latestSnapshotCapturedAt
         self.unsupportedApps = unsupportedApps
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isPaused = try container.decode(Bool.self, forKey: .isPaused)
+        helperRunning = try container.decode(Bool.self, forKey: .helperRunning)
+        accessibilityTrusted = try container.decodeIfPresent(Bool.self, forKey: .accessibilityTrusted) ?? false
+        entitlementActive = try container.decode(Bool.self, forKey: .entitlementActive)
+        entitlementPlan = try container.decode(EntitlementState.Plan.self, forKey: .entitlementPlan)
+        entitlementValidUntil = try container.decodeIfPresent(Date.self, forKey: .entitlementValidUntil)
+        entitlementTrialEndsAt = try container.decodeIfPresent(Date.self, forKey: .entitlementTrialEndsAt)
+        latestSnapshotCapturedAt = try container.decode([OfficeApp: Date].self, forKey: .latestSnapshotCapturedAt)
+        unsupportedApps = try container.decode([OfficeApp].self, forKey: .unsupportedApps)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isPaused, forKey: .isPaused)
+        try container.encode(helperRunning, forKey: .helperRunning)
+        try container.encode(accessibilityTrusted, forKey: .accessibilityTrusted)
+        try container.encode(entitlementActive, forKey: .entitlementActive)
+        try container.encode(entitlementPlan, forKey: .entitlementPlan)
+        try container.encodeIfPresent(entitlementValidUntil, forKey: .entitlementValidUntil)
+        try container.encodeIfPresent(entitlementTrialEndsAt, forKey: .entitlementTrialEndsAt)
+        try container.encode(latestSnapshotCapturedAt, forKey: .latestSnapshotCapturedAt)
+        try container.encode(unsupportedApps, forKey: .unsupportedApps)
     }
 }
 

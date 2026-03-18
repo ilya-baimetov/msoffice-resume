@@ -6,6 +6,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         let status = DaemonStatusDTO(
             isPaused: false,
             helperRunning: true,
+            accessibilityTrusted: true,
             entitlementActive: true,
             entitlementPlan: .yearly,
             entitlementValidUntil: Date(timeIntervalSince1970: 1_800_000_000),
@@ -20,6 +21,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         let loaded = DaemonSharedIPC.loadStatus()
         XCTAssertNotNil(loaded)
         XCTAssertEqual(loaded?.helperRunning, true)
+        XCTAssertEqual(loaded?.accessibilityTrusted, true)
         XCTAssertEqual(loaded?.entitlementPlan, .yearly)
     }
 
@@ -27,6 +29,7 @@ final class OfficeResumeCoreTests: XCTestCase {
         let status = DaemonStatusDTO(
             isPaused: false,
             helperRunning: true,
+            accessibilityTrusted: false,
             entitlementActive: true,
             entitlementPlan: .trial,
             entitlementValidUntil: Date(timeIntervalSince1970: 1_700_086_400),
@@ -38,6 +41,25 @@ final class OfficeResumeCoreTests: XCTestCase {
         let data = try JSONEncoder().encode(status)
         let decoded = try JSONDecoder().decode(DaemonStatusDTO.self, from: data)
         XCTAssertEqual(decoded.latestSnapshotCapturedAt[.word], status.latestSnapshotCapturedAt[.word])
+        XCTAssertEqual(decoded.accessibilityTrusted, status.accessibilityTrusted)
+    }
+
+    func testDaemonStatusLegacyDecodeDefaultsAccessibilityTrustedToFalse() throws {
+        let json = """
+        {
+          "isPaused": false,
+          "helperRunning": true,
+          "entitlementActive": true,
+          "entitlementPlan": "trial",
+          "entitlementValidUntil": null,
+          "entitlementTrialEndsAt": null,
+          "latestSnapshotCapturedAt": [],
+          "unsupportedApps": ["onenote"]
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(DaemonStatusDTO.self, from: Data(json.utf8))
+        XCTAssertFalse(decoded.accessibilityTrusted)
     }
 
     func testDocumentSnapshotRoundTrip() throws {

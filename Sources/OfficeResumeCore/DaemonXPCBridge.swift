@@ -26,6 +26,7 @@ public enum DaemonXPCError: Error, LocalizedError {
     func setPaused(_ paused: Bool, reply: @escaping (Bool) -> Void)
     func restoreNow(_ appRaw: String?, reply: @escaping (NSData?) -> Void)
     func clearSnapshot(_ appRaw: String?, reply: @escaping (Bool) -> Void)
+    func openAccessibilitySettings(reply: @escaping (Bool) -> Void)
 }
 
 public final class DaemonStateStore {
@@ -33,6 +34,7 @@ public final class DaemonStateStore {
     private var status = DaemonStatusDTO(
         isPaused: false,
         helperRunning: true,
+        accessibilityTrusted: false,
         entitlementActive: true,
         entitlementPlan: .trial,
         entitlementValidUntil: nil,
@@ -52,6 +54,7 @@ public final class DaemonStateStore {
             status = DaemonStatusDTO(
                 isPaused: paused,
                 helperRunning: status.helperRunning,
+                accessibilityTrusted: status.accessibilityTrusted,
                 entitlementActive: status.entitlementActive,
                 entitlementPlan: status.entitlementPlan,
                 entitlementValidUntil: status.entitlementValidUntil,
@@ -68,6 +71,7 @@ public final class DaemonStateStore {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
                 helperRunning: running,
+                accessibilityTrusted: status.accessibilityTrusted,
                 entitlementActive: status.entitlementActive,
                 entitlementPlan: status.entitlementPlan,
                 entitlementValidUntil: status.entitlementValidUntil,
@@ -83,10 +87,27 @@ public final class DaemonStateStore {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
+                accessibilityTrusted: status.accessibilityTrusted,
                 entitlementActive: entitlement.isActive,
                 entitlementPlan: entitlement.plan,
                 entitlementValidUntil: entitlement.validUntil,
                 entitlementTrialEndsAt: entitlement.trialEndsAt,
+                latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
+                unsupportedApps: status.unsupportedApps
+            )
+        }
+    }
+
+    public func setAccessibilityTrusted(_ trusted: Bool) {
+        queue.sync {
+            status = DaemonStatusDTO(
+                isPaused: status.isPaused,
+                helperRunning: status.helperRunning,
+                accessibilityTrusted: trusted,
+                entitlementActive: status.entitlementActive,
+                entitlementPlan: status.entitlementPlan,
+                entitlementValidUntil: status.entitlementValidUntil,
+                entitlementTrialEndsAt: status.entitlementTrialEndsAt,
                 latestSnapshotCapturedAt: status.latestSnapshotCapturedAt,
                 unsupportedApps: status.unsupportedApps
             )
@@ -100,6 +121,7 @@ public final class DaemonStateStore {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
+                accessibilityTrusted: status.accessibilityTrusted,
                 entitlementActive: status.entitlementActive,
                 entitlementPlan: status.entitlementPlan,
                 entitlementValidUntil: status.entitlementValidUntil,
@@ -115,6 +137,7 @@ public final class DaemonStateStore {
             status = DaemonStatusDTO(
                 isPaused: status.isPaused,
                 helperRunning: status.helperRunning,
+                accessibilityTrusted: status.accessibilityTrusted,
                 entitlementActive: status.entitlementActive,
                 entitlementPlan: status.entitlementPlan,
                 entitlementValidUntil: status.entitlementValidUntil,
@@ -132,17 +155,20 @@ public struct DaemonServiceHandlers {
     public let setPaused: (Bool) async -> Bool
     public let restoreNow: (OfficeApp?) async -> RestoreCommandResultDTO
     public let clearSnapshot: (OfficeApp?) async -> Bool
+    public let openAccessibilitySettings: () async -> Bool
 
     public init(
         getStatus: @escaping () async -> DaemonStatusDTO,
         setPaused: @escaping (Bool) async -> Bool,
         restoreNow: @escaping (OfficeApp?) async -> RestoreCommandResultDTO,
-        clearSnapshot: @escaping (OfficeApp?) async -> Bool
+        clearSnapshot: @escaping (OfficeApp?) async -> Bool,
+        openAccessibilitySettings: @escaping () async -> Bool
     ) {
         self.getStatus = getStatus
         self.setPaused = setPaused
         self.restoreNow = restoreNow
         self.clearSnapshot = clearSnapshot
+        self.openAccessibilitySettings = openAccessibilitySettings
     }
 }
 
@@ -188,6 +214,13 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
         }
     }
 
+    public func openAccessibilitySettings(reply: @escaping (Bool) -> Void) {
+        Task {
+            let ok = await handlers.openAccessibilitySettings()
+            reply(ok)
+        }
+    }
+
     private static func defaultHandlers(store: DaemonStateStore) -> DaemonServiceHandlers {
         DaemonServiceHandlers(
             getStatus: {
@@ -201,6 +234,9 @@ public final class OfficeResumeDaemonService: NSObject, OfficeResumeDaemonXPCPro
             },
             clearSnapshot: { _ in
                 return true
+            },
+            openAccessibilitySettings: {
+                return false
             }
         )
     }
@@ -297,6 +333,14 @@ public final class DaemonXPCClient {
     public func clearSnapshot(app: OfficeApp?, completion: @escaping (Result<Bool, Error>) -> Void) {
         sendRequest(completion: completion) { proxy, resolve in
             proxy.clearSnapshot(app?.rawValue) { ok in
+                resolve(.success(ok))
+            }
+        }
+    }
+
+    public func openAccessibilitySettings(_ completion: @escaping (Result<Bool, Error>) -> Void) {
+        sendRequest(completion: completion) { proxy, resolve in
+            proxy.openAccessibilitySettings { ok in
                 resolve(.success(ok))
             }
         }

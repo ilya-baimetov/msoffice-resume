@@ -70,6 +70,15 @@ private struct OfficeResumeMenuContentView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if model.status.accessibilityTrusted {
+                Text("Accessibility: OK")
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Accessibility: click to fix") {
+                    model.openAccessibilitySettings()
+                }
+            }
+
             if model.autostartHealthy {
                 Text("Autostart: OK")
                     .foregroundStyle(.secondary)
@@ -256,6 +265,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     @Published var status = DaemonStatusDTO(
         isPaused: false,
         helperRunning: false,
+        accessibilityTrusted: false,
         entitlementActive: false,
         entitlementPlan: .none,
         entitlementValidUntil: nil,
@@ -363,6 +373,23 @@ final class OfficeResumeMenuViewModel: ObservableObject {
         for raw in urls {
             if let url = URL(string: raw), NSWorkspace.shared.open(url) {
                 return
+            }
+        }
+    }
+
+    func openAccessibilitySettings() {
+        if openAccessibilitySettingsLocally() {
+            requestStatusRefresh(reason: "open-accessibility-settings")
+            return
+        }
+
+        client.openAccessibilitySettings { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                if case .failure = result {
+                    DaemonSharedIPC.postOpenAccessibilitySettings()
+                }
+                self.requestStatusRefresh(reason: "open-accessibility-settings")
             }
         }
     }
@@ -509,6 +536,21 @@ final class OfficeResumeMenuViewModel: ObservableObject {
 
     private func refreshAutostartHealth() {
         autostartHealthy = HelperLauncher.autostartHealth().isHealthy
+    }
+
+    private func openAccessibilitySettingsLocally() -> Bool {
+        let urls: [String] = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
+        ]
+
+        for raw in urls {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) {
+                return true
+            }
+        }
+
+        return NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
     }
 }
 

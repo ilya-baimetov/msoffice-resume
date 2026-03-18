@@ -17,6 +17,7 @@
 		28977F73B9F3C2D3B3AAF648 /* OfficeResumeMenuUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E364B385C46A1B32D9B145A0 /* OfficeResumeMenuUI.swift */; };
 		2CFFDA43677EA33948C584AE /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
 		2E13B31F642784F060ED2C9C /* OfficeResumeCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; };
+		382A7AF2899CC05DB95B5088 /* AccessibilityObserverManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A58FAE7861710CCC7CC3DB78 /* AccessibilityObserverManager.swift */; };
 		43A1485C2ED49E84263ED1C1 /* OfficeResumeCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 8F1C2D4BE9AFA3D29F662F7E /* OfficeResumeCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49EDE795080CB527122DF54D /* Protocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF22C81325E81BB13E62C604 /* Protocols.swift */; };
 		4D7020E83FEB07EE15A08FD8 /* DaemonSharedIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793AD1CBD706521D5B6F02BA /* DaemonSharedIPC.swift */; };
@@ -136,6 +137,7 @@
 		8FF7BD7697252E4DF201F41F /* OfficeBundleRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeBundleRegistry.swift; sourceTree = "<group>"; };
 		999A82A7F7CEAC45008ED799 /* HelperLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperLauncher.swift; sourceTree = "<group>"; };
 		9F5403064CD71B4CEAD68B4E /* HelperRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperRuntime.swift; sourceTree = "<group>"; };
+		A58FAE7861710CCC7CC3DB78 /* AccessibilityObserverManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityObserverManager.swift; sourceTree = "<group>"; };
 		AEFB558BBFEF169A7B2FAD52 /* OfficeResumeHelperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeResumeHelperApp.swift; sourceTree = "<group>"; };
 		B9B2FD1E91A496878C1C16F9 /* OfficeResumeHelper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OfficeResumeHelper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BAB093EEF177C26571E5959C /* OfficeResumeMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OfficeResumeMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -265,6 +267,7 @@
 		87DD085C0B3A9FC3FF58548F /* OfficeResumeHelper */ = {
 			isa = PBXGroup;
 			children = (
+				A58FAE7861710CCC7CC3DB78 /* AccessibilityObserverManager.swift */,
 				9F5403064CD71B4CEAD68B4E /* HelperRuntime.swift */,
 				8ADA5461F33F8B8E3F491684 /* OfficeResumeHelper.entitlements */,
 				AEFB558BBFEF169A7B2FAD52 /* OfficeResumeHelperApp.swift */,
@@ -477,6 +480,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				382A7AF2899CC05DB95B5088 /* AccessibilityObserverManager.swift in Sources */,
 				06F365087C1DF4B203569594 /* HelperRuntime.swift in Sources */,
 				06C0E7B70036EE4B164A92B8 /* OfficeResumeHelperApp.swift in Sources */,
 			);

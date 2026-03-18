@@ -108,6 +108,11 @@ final class HelperDaemonController {
     private let entitlementProvider: EntitlementProvider
     private let adapters: [OfficeApp: OfficeAdapter]
     private let userDefaults: UserDefaults
+    private lazy var axObserverManager = AccessibilityObserverManager { [weak self] app, notification, pid in
+        Task { @MainActor in
+            self?.handleAXNotification(app: app, notification: notification, pid: pid)
+        }
+    }
 
     private var isPaused: Bool
     private var observedLaunchIDs: [OfficeApp: String] = [:]
@@ -121,6 +126,7 @@ final class HelperDaemonController {
     private var frontmostRefreshApp: OfficeApp?
 
     private let deactivateCaptureDebounceNanoseconds: UInt64 = 350_000_000
+    private let axCaptureDebounceNanoseconds: UInt64 = 250_000_000
     private let powerAdapterRefreshNanoseconds: UInt64 = 1_000_000_000
     private let batteryRefreshNanoseconds: UInt64 = 10_000_000_000
     private let warmupCaptureIntervalNanoseconds: UInt64 = 1_000_000_000
@@ -131,7 +137,7 @@ final class HelperDaemonController {
 
     init(
         channel: StorageChannel? = nil,
-        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaults() ?? .standard
+        userDefaults: UserDefaults = RuntimeConfiguration.sharedDefaults()
     ) throws {
         let stateStore = DaemonStateStore()
         let distributionChannel = RuntimeConfiguration.distributionChannel(userDefaults: userDefaults)
@@ -172,6 +178,7 @@ final class HelperDaemonController {
 
         Task { @MainActor in
             await refreshEntitlementStatus()
+            await refreshAccessibilityState(reason: "startup")
             await syncSnapshotTimestamps()
             await reconcileFrontmostAppAtStartup()
         }
@@ -179,6 +186,7 @@ final class HelperDaemonController {
 
     func stop() {
         DebugLog.info("Helper daemon stopping")
+        axObserverManager.detachAll()
         cancelPendingCaptures()
         stopFrontmostRefresh()
         stateStore.setHelperRunning(false)
@@ -188,9 +196,14 @@ final class HelperDaemonController {
     func makeXPCHandlers() -> DaemonServiceHandlers {
         DaemonServiceHandlers(
             getStatus: { [weak self] in
-                self?.status() ?? DaemonStatusDTO(
+                if let self {
+                    await self.refreshAccessibilityState(reason: "status-request")
+                    return self.status()
+                }
+                return DaemonStatusDTO(
                     isPaused: true,
                     helperRunning: false,
+                    accessibilityTrusted: false,
                     entitlementActive: false,
                     entitlementPlan: .none,
                     entitlementValidUntil: nil,
@@ -207,6 +220,9 @@ final class HelperDaemonController {
             },
             clearSnapshot: { [weak self] app in
                 await self?.clearSnapshot(app: app) ?? false
+            },
+            openAccessibilitySettings: { [weak self] in
+                await self?.openAccessibilitySettings() ?? false
             }
         )
     }
@@ -225,6 +241,13 @@ final class HelperDaemonController {
         Task { @MainActor in
             let event = LifecycleEvent(app: app, type: type, timestamp: Date(), details: details)
             try? await snapshotStore.appendEvent(event)
+
+            switch type {
+            case .appLaunched, .appActivated, .appTerminated:
+                await refreshAccessibilityState(reason: "lifecycle-\(type.rawValue)")
+            default:
+                break
+            }
 
             guard app != .onenote else {
                 if type == .appTerminated || type == .appDeactivated {
@@ -306,6 +329,10 @@ final class HelperDaemonController {
 
     func handleCommandRefreshEntitlement() async {
         await refreshEntitlementStatus()
+    }
+
+    func handleCommandOpenAccessibilitySettings() async {
+        _ = await openAccessibilitySettings()
     }
 
     private func status() -> DaemonStatusDTO {
@@ -749,6 +776,61 @@ final class HelperDaemonController {
         publishStatus()
     }
 
+    private func refreshAccessibilityState(reason: String) async {
+        let trusted = axObserverManager.isTrusted()
+        stateStore.setAccessibilityTrusted(trusted)
+
+        if trusted {
+            axObserverManager.syncObservedApplications()
+        } else {
+            axObserverManager.detachAll()
+            cancelPendingCaptures()
+            stopFrontmostRefresh()
+        }
+
+        publishStatus()
+        DebugLog.debug(
+            "Accessibility trust refreshed",
+            metadata: [
+                "reason": reason,
+                "trusted": trusted ? "true" : "false",
+            ]
+        )
+    }
+
+    private func handleAXNotification(app: OfficeApp, notification: String, pid: pid_t) {
+        DebugLog.debug(
+            "AX notification received",
+            metadata: [
+                "app": app.rawValue,
+                "notification": notification,
+                "pid": "\(pid)",
+            ]
+        )
+
+        Task { @MainActor in
+            guard await canCaptureState() else {
+                return
+            }
+            scheduleCapture(app: app, source: "ax", after: axCaptureDebounceNanoseconds)
+        }
+    }
+
+    private func openAccessibilitySettings() async -> Bool {
+        let urls: [String] = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
+        ]
+
+        for raw in urls {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) {
+                return true
+            }
+        }
+
+        return NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+    }
+
     private func lifecycleDetails(type: LifecycleEventType, runningApplication: NSRunningApplication?) -> [String: String] {
         var details: [String: String] = ["event": type.rawValue]
         if let runningApplication {
@@ -899,6 +981,10 @@ final class HelperDaemonController {
 
     private func canCaptureState() async -> Bool {
         guard !isPaused else {
+            return false
+        }
+
+        guard stateStore.currentStatus().accessibilityTrusted else {
             return false
         }
 
@@ -1254,6 +1340,16 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        let openAccessibilityObserver = center.addObserver(
+            forName: DaemonSharedIPC.openAccessibilitySettingsCommandName,
+            object: nil,
+            queue: nil
+        ) { _ in
+            Task { @MainActor in
+                await controller.handleCommandOpenAccessibilitySettings()
+            }
+        }
+
         let quitHelperObserver = center.addObserver(
             forName: DaemonSharedIPC.quitHelperCommandName,
             object: nil,
@@ -1269,6 +1365,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             restoreObserver,
             clearObserver,
             refreshEntitlementObserver,
+            openAccessibilityObserver,
             quitHelperObserver,
         ]
     }
