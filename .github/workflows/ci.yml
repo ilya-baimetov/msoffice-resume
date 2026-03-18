@@ -198,7 +198,7 @@ jobs:
           if has_any '^Sources/OfficeResumeHelper/'; then
             helper_changed=true
           fi
-          if has_any '^Sources/OfficeResumeDirect/|^Sources/OfficeResumeMAS/|^Sources/MenuUIShared/'; then
+          if has_any '^Sources/OfficeResumeDirect/|^Sources/MenuUIShared/'; then
             ui_changed=true
           fi
           if has_any '^OfficeResumeBackend/'; then
@@ -239,107 +239,6 @@ jobs:
           fi
 
           echo "Spec drift guardrails passed."
-
-  build-test-mas:
-    name: build-test-mas
-    runs-on: macos-14
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Select Xcode 16.2
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.2"
-
-      - name: Regenerate Xcode project for runner compatibility
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f project.yml ]]; then
-            if ! command -v xcodegen >/dev/null 2>&1; then
-              brew install xcodegen
-            fi
-            xcodegen generate
-          fi
-
-      - name: Discover workspace or project
-        id: discover
-        shell: bash
-        run: |
-          set -euo pipefail
-          workspace="$(find . -maxdepth 4 -name '*.xcworkspace' -not -path '*.xcodeproj/*' -print -quit)"
-          project="$(find . -maxdepth 4 -name '*.xcodeproj' -print -quit)"
-          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
-          echo "project=$project" >> "$GITHUB_OUTPUT"
-
-      - name: Skip if Xcode project is not scaffolded yet
-        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project == '' }}
-        run: echo "No Xcode workspace/project found yet. Skipping MAS build/test for now."
-
-      - name: Verify MAS scheme exists (workspace)
-        if: ${{ steps.discover.outputs.workspace != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild -list -workspace "${{ steps.discover.outputs.workspace }}" > /tmp/xcode-list-mas.txt
-          grep -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
-
-      - name: Verify MAS scheme exists (project)
-        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild -list -project "${{ steps.discover.outputs.project }}" > /tmp/xcode-list-mas.txt
-          grep -q "OfficeResumeMAS" /tmp/xcode-list-mas.txt
-
-      - name: Static analysis MAS scheme (workspace)
-        if: ${{ steps.discover.outputs.workspace != '' }}
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -workspace "${{ steps.discover.outputs.workspace }}" \
-            -scheme OfficeResumeMAS \
-            -destination "platform=macOS" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            analyze
-
-      - name: Static analysis MAS scheme (project)
-        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project "${{ steps.discover.outputs.project }}" \
-            -scheme OfficeResumeMAS \
-            -destination "platform=macOS" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            analyze
-
-      - name: Build and test MAS scheme (workspace)
-        if: ${{ steps.discover.outputs.workspace != '' }}
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -workspace "${{ steps.discover.outputs.workspace }}" \
-            -scheme OfficeResumeMAS \
-            -destination "platform=macOS" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build test
-
-      - name: Build and test MAS scheme (project)
-        if: ${{ steps.discover.outputs.workspace == '' && steps.discover.outputs.project != '' }}
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project "${{ steps.discover.outputs.project }}" \
-            -scheme OfficeResumeMAS \
-            -destination "platform=macOS" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build test
 
   build-test-direct:
     name: build-test-direct

@@ -59,8 +59,6 @@ forbid_pattern 'WindowGroup\s*\{' "Sources/MenuUIShared" \
   "No WindowGroup scene in shared menu UI"
 forbid_pattern 'WindowGroup\s*\{' "Sources/OfficeResumeDirect" \
   "No WindowGroup scene in Direct target"
-forbid_pattern 'WindowGroup\s*\{' "Sources/OfficeResumeMAS" \
-  "No WindowGroup scene in MAS target"
 
 forbid_pattern 'NSPopover|NSPanel|NSWindow' "Sources/MenuUIShared" \
   "No custom AppKit popover/window shell in shared menu UI"

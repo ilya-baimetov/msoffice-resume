@@ -109,7 +109,7 @@ public enum DaemonSharedIPC {
     }
 
     private static func statusFileURL(fileManager: FileManager) throws -> URL {
-        let root = try RuntimeConfiguration.appGroupOrFallbackRoot(fileManager: fileManager)
+        let root = try RuntimeConfiguration.sharedRoot(fileManager: fileManager)
         return root
             .appendingPathComponent("ipc", isDirectory: true)
             .appendingPathComponent(statusFileName)

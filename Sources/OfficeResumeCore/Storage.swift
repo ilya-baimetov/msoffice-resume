@@ -1,7 +1,7 @@
 import Foundation
 
 public enum StorageChannel: Equatable {
-    case appGroupFirst(appGroupIdentifier: String)
+    case applicationSupport(bundlePrefix: String)
 }
 
 public struct UnsavedArtifactRecord: Codable, Hashable {
@@ -263,20 +263,19 @@ public actor FileSnapshotStore: SnapshotStore {
             base = baseDirectoryOverride
         } else {
             switch channel {
-            case let .appGroupFirst(appGroupIdentifier):
-                let root = try RuntimeConfiguration.appGroupOrFallbackRoot(
-                    appGroupIdentifier: appGroupIdentifier,
+            case let .applicationSupport(bundlePrefix):
+                let root = try RuntimeConfiguration.sharedRoot(
                     bundlePrefix: RuntimeConfiguration.bundlePrefix,
                     fileManager: fileManager,
                     environment: environment
                 )
-                base = root.appendingPathComponent("Saved Application State", isDirectory: true)
+                _ = bundlePrefix
+                base = root.appendingPathComponent("state", isDirectory: true)
             }
         }
 
         let root = base
-            .appendingPathComponent("\(bundleID).savedState", isDirectory: true)
-            .appendingPathComponent("OfficeResume", isDirectory: true)
+            .appendingPathComponent(bundleID, isDirectory: true)
 
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         return root

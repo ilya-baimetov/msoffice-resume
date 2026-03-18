@@ -92,7 +92,7 @@ public enum DebugLog {
 
     private static func logFileURL(fileManager: FileManager = .default) throws -> URL {
         let directory = try RuntimeConfiguration
-            .appGroupOrFallbackRoot(fileManager: fileManager)
+            .sharedRoot(fileManager: fileManager)
             .appendingPathComponent("logs", isDirectory: true)
 
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

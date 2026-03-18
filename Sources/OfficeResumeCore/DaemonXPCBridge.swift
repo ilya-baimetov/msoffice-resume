@@ -408,7 +408,7 @@ private enum DaemonEndpointStore {
     }
 
     private static func endpointFileURL(fileManager: FileManager) throws -> URL {
-        let root = try RuntimeConfiguration.appGroupOrFallbackRoot(fileManager: fileManager)
+        let root = try RuntimeConfiguration.sharedRoot(fileManager: fileManager)
         return root
             .appendingPathComponent("ipc", isDirectory: true)
             .appendingPathComponent(DaemonXPCConstants.endpointFileName)

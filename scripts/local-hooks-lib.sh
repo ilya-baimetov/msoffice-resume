@@ -82,14 +82,6 @@ run_xcode_suite() {
 
   xcodebuild \
     -"${target_type}" "$target_path" \
-    -scheme OfficeResumeMAS \
-    -destination 'platform=macOS' \
-    -configuration Debug \
-    CODE_SIGNING_ALLOWED=NO \
-    build test
-
-  xcodebuild \
-    -"${target_type}" "$target_path" \
     -scheme OfficeResumeHelper \
     -destination 'platform=macOS' \
     -configuration Debug \

@@ -112,7 +112,7 @@ public actor EntitlementFileStore {
             directory = baseDirectory
         } else {
             directory = try RuntimeConfiguration
-                .appGroupOrFallbackRoot(fileManager: fileManager)
+                .sharedRoot(fileManager: fileManager)
                 .appendingPathComponent("entitlements", isDirectory: true)
         }
 

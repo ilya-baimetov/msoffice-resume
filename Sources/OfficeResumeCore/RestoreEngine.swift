@@ -22,7 +22,7 @@ public actor FileRestoreMarkerStore: RestoreMarkerStore {
             self.markerFileURL = markerFileURL
         } else {
             let directory = try RuntimeConfiguration
-                .appGroupOrFallbackRoot(fileManager: fileManager)
+                .sharedRoot(fileManager: fileManager)
                 .appendingPathComponent("restore", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             self.markerFileURL = directory.appendingPathComponent("restore-markers-v1.json")

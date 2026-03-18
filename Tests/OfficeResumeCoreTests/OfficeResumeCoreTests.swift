@@ -83,7 +83,7 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testRestoreEngineDedupeAndOneShotMarker() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine")
         let snapshotStore = FileSnapshotStore(
-            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            channel: .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix),
             baseDirectoryOverride: tempRoot
         )
         let markerURL = tempRoot.appendingPathComponent("restore-markers.json")
@@ -128,7 +128,7 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testRestoreEngineIgnoresPlaceholderCanonicalPaths() async throws {
         let tempRoot = makeTempDirectory(name: "restore-engine-placeholder")
         let snapshotStore = FileSnapshotStore(
-            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            channel: .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix),
             baseDirectoryOverride: tempRoot
         )
         let markerURL = tempRoot.appendingPathComponent("restore-markers.json")
@@ -160,7 +160,7 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testFileSnapshotStoreRoundTripAndEvents() async throws {
         let tempRoot = makeTempDirectory(name: "snapshot-store")
         let store = FileSnapshotStore(
-            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            channel: .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix),
             baseDirectoryOverride: tempRoot
         )
 
@@ -190,7 +190,7 @@ final class OfficeResumeCoreTests: XCTestCase {
     func testUnsavedArtifactPurgeRemovesUnreferencedFiles() async throws {
         let tempRoot = makeTempDirectory(name: "artifact-purge")
         let store = FileSnapshotStore(
-            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            channel: .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix),
             baseDirectoryOverride: tempRoot
         )
         let unsavedDirectory = try await store.ensureUnsavedDirectory(for: .word)
@@ -327,14 +327,14 @@ final class OfficeResumeCoreTests: XCTestCase {
         XCTAssertEqual(channel, .direct)
         XCTAssertEqual(
             RuntimeConfiguration.storageChannel(for: channel),
-            .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier)
+            .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix)
         )
     }
 
     func testForceSaveUntitledPersistsRealArtifactAndIndex() async throws {
         let tempRoot = makeTempDirectory(name: "force-save")
         let store = FileSnapshotStore(
-            channel: .appGroupFirst(appGroupIdentifier: RuntimeConfiguration.appGroupIdentifier),
+            channel: .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix),
             baseDirectoryOverride: tempRoot
         )
         let executor = MockScriptExecutor { script in

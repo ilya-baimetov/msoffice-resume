@@ -259,7 +259,7 @@ public actor FolderAccessStore {
         if let baseDirectoryOverride {
             baseDirectory = baseDirectoryOverride
         } else {
-            baseDirectory = try RuntimeConfiguration.appGroupOrFallbackRoot(
+            baseDirectory = try RuntimeConfiguration.sharedRoot(
                 fileManager: fileManager,
                 environment: environment
             )

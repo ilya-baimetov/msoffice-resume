@@ -95,10 +95,6 @@ private struct OfficeResumeMenuContentView: View {
             .disabled(!model.canRunRestore)
 
             Menu("Advanced") {
-                Button("Grant Folder Access…") {
-                    model.grantFolderAccess()
-                }
-
                 Button("Clear Snapshot") {
                     model.clearSnapshot()
                 }
@@ -272,7 +268,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
 
     private let channel: DistributionChannel
     private let client = DaemonXPCClient()
-    private let folderAccessStore = FolderAccessStore()
     private var started = false
     private var startupRetryCount = 0
     private let maxStartupRetryCount = 8
@@ -356,51 +351,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
                     DaemonSharedIPC.postClearSnapshot(app: nil)
                 }
                 self.requestStatusRefresh(reason: "clear-snapshot")
-            }
-        }
-    }
-
-    func grantFolderAccess() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.title = "Grant Folder Access"
-        panel.message = "Select one or more folders that Office Resume may reopen documents from, such as Documents, OneDrive, or iCloud Drive."
-        panel.prompt = "Grant Access"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
-
-        guard panel.runModal() == .OK else {
-            return
-        }
-
-        let selectedURLs = panel.urls
-        guard !selectedURLs.isEmpty else {
-            return
-        }
-
-        Task { @MainActor in
-            do {
-                let granted = try await folderAccessStore.grantDirectories(selectedURLs)
-                DebugLog.info(
-                    "Folder access grants updated",
-                    metadata: ["count": "\(granted.count)"]
-                )
-                presentAlert(
-                    title: "Folder Access Saved",
-                    message: "Office Resume will reuse these folder grants during restore. Files under the selected roots should stop prompting on every reopen."
-                )
-            } catch {
-                DebugLog.error(
-                    "Failed to save folder access grants",
-                    metadata: ["error": error.localizedDescription]
-                )
-                presentAlert(
-                    title: "Folder Access Failed",
-                    message: error.localizedDescription
-                )
             }
         }
     }
@@ -550,7 +500,7 @@ final class OfficeResumeMenuViewModel: ObservableObject {
     }
 
     private func ipcDirectoryURL() throws -> URL {
-        try RuntimeConfiguration.appGroupOrFallbackRoot().appendingPathComponent("ipc", isDirectory: true)
+        try RuntimeConfiguration.sharedRoot().appendingPathComponent("ipc", isDirectory: true)
     }
 
     private func isHelperProcessRunning() -> Bool {
@@ -559,16 +509,6 @@ final class OfficeResumeMenuViewModel: ObservableObject {
 
     private func refreshAutostartHealth() {
         autostartHealthy = HelperLauncher.autostartHealth().isHealthy
-    }
-
-    private func presentAlert(title: String, message: String) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 }
 
