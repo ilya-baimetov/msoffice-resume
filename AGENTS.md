@@ -67,7 +67,7 @@ Legacy note:
 ## Distribution and Billing Rules
 `Office Resume` ships as a direct-download app:
 - Stripe subscriptions (monthly/yearly) with 14-day trial enforced server-side
-- Entitlement backend: Cloudflare Worker + D1/KV + Resend
+- Entitlement backend: unified `office-resume` Cloudflare Worker + D1/KV + Resend
 - Auth flow: email magic link with app callback URL
 - New purchases: Worker-hosted pricing page + Stripe Checkout Sessions after verified sign-in
 - Existing paid subscribers: Stripe Billing Portal

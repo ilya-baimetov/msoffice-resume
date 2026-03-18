@@ -8,7 +8,8 @@
   - `MenuBarApp` (UI, account surface, control plane)
   - `LoginItemHelper` (background capture/restore daemon)
   - `OfficeResumeCore` (shared models, adapters, storage, restore, account, entitlement abstractions)
-  - `OfficeResumeBackend` (Cloudflare Worker for Direct auth, billing, entitlements)
+  - `office-resume` Cloudflare Worker (static site assets plus mounted Direct backend/API)
+  - `OfficeResumeBackend` (backend module mounted inside the unified Worker for Direct auth, billing, entitlements)
 
 v1 support:
 - Word, Excel, PowerPoint: document-level restore
@@ -359,8 +360,9 @@ The direct-only architecture does not depend on sandbox container indirection.
 ## 12. Account and Entitlement Architecture
 ### 12.1 Direct
 - Backend is the source of truth for sign-in, trial, free-pass, and Stripe-backed subscription state.
-- `POST /auth/request-link` sends email via Resend.
-- `GET /auth/verify?token=...` validates the token server-side, mints session, and redirects to the app custom URL scheme.
+- The canonical Worker name is `office-resume`; it serves the site at `/` and the backend at `/api/*`.
+- `POST /api/auth/request-link` sends email via Resend.
+- `GET /api/auth/verify?token=...` validates the token server-side, mints session, and redirects to the app custom URL scheme.
 - App stores the session token in Keychain and refreshes entitlement cache.
 - Direct checkout requires verified sign-in before purchase is possible.
 - Signed-in non-paid users open a Worker-hosted pricing page from the account window.

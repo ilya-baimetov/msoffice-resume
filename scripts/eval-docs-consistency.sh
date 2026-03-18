@@ -167,6 +167,7 @@ require_pattern "spec.md" "^## 17\. Test Matrix" "spec has test matrix"
 require_pattern "PRD.md" "verified sign-in" "PRD requires verified sign-in for Direct billing"
 require_pattern "spec.md" "Checkout Session|Checkout Sessions" "spec references Direct Checkout Sessions"
 require_pattern "services-setup.md" "Worker-hosted pricing page|Worker-hosted pricing" "services setup documents Worker-hosted pricing"
+require_pattern "services-setup.md" "https://officeresume\\.com/api" "services setup documents /api backend base URL"
 require_pattern "AGENTS.md" "AXObserver|Accessibility notifications" "AGENTS documents AX-first capture"
 require_pattern "PRD.md" "Accessibility: click to fix" "PRD documents Accessibility UI"
 require_pattern "spec.md" "NSWorkspace" "spec documents NSWorkspace as secondary lifecycle input"
@@ -215,7 +216,10 @@ forbid_pattern_in_set "Debug-only entitlement bypass|debug entitlement bypass|En
 require_pattern "specs/backend-worker.md" "GET /billing/entry" "Backend spec documents billing entry endpoint"
 require_pattern "specs/backend-worker.md" "GET /billing/pricing" "Backend spec documents pricing page endpoint"
 require_pattern "specs/backend-worker.md" "POST /billing/checkout" "Backend spec documents checkout endpoint"
+require_pattern "specs/backend-worker.md" "/api/" "Backend spec documents shared-worker /api routing"
 require_pattern "specs/menu-ui.md" "Choose Plan" "Menu UI spec documents Choose Plan action"
+require_pattern_in_set "unified .*Cloudflare Worker|same Worker deployment|/api/\\*" "Checked docs describe unified Worker deployment" \
+  "AGENTS.md" "PRD.md" "spec.md" "specs/backend-worker.md" "README.md" "services-setup.md" "site/README.md"
 
 echo
 echo "== Architecture Drift Checks =="

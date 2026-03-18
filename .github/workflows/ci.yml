@@ -44,8 +44,8 @@ jobs:
           set -euo pipefail
           bash scripts/eval-ui-guardrails.sh
 
-  site-worker-dry-run:
-    name: site-worker-dry-run
+  worker-dry-run:
+    name: worker-dry-run
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,8 +59,7 @@ jobs:
       - name: Install Wrangler
         run: npm install --global wrangler@4
 
-      - name: Validate site Worker deploy config
-        working-directory: site
+      - name: Validate unified Worker deploy config
         run: wrangler deploy --dry-run
 
   pr-scorecard-guardrail:

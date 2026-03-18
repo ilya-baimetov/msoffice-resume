@@ -31,6 +31,6 @@ if has_changed '^OfficeResumeBackend/'; then
   run_backend_tests
 fi
 
-if has_changed '^site/'; then
-  run_site_dry_run
+if has_changed '^(site/|OfficeResumeBackend/|worker\.js$|wrangler\.jsonc$)'; then
+  run_worker_dry_run
 fi

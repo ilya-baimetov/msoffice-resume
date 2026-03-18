@@ -148,6 +148,9 @@ Recommended configuration sources:
 
 See `services-setup.md` for the exact service setup and required env and build settings.
 
+Production base URL should target the unified Cloudflare Worker API surface:
+- `https://officeresume.com/api`
+
 Direct billing flow:
 - sign in by email magic link first
 - if not yet paid, `Account…` opens a Worker-hosted pricing page and then Stripe Checkout
@@ -171,7 +174,7 @@ Workflow: `.github/workflows/ci.yml`
 Primary jobs:
 - `docs-guardrails`
 - `ui-guardrails`
-- `site-worker-dry-run`
+- `worker-dry-run`
 - `pr-scorecard-guardrail`
 - `spec-drift-guardrails`
 - `build-test-direct`

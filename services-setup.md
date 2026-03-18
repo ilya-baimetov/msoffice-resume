@@ -60,17 +60,18 @@ sudo ./scripts/install-package.sh ./dist/OfficeResume.pkg
 - `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 - both bundles are ad hoc signed even without a Developer ID certificate
 
-## 4. Direct Backend Setup (Cloudflare Worker)
+## 4. Unified Cloudflare Worker Setup (Site + Direct Backend)
 1. Create a Cloudflare account and install Wrangler:
 ```bash
 npm install -g wrangler
 wrangler login
 ```
-2. Provision Worker and storage:
-- Worker service for `OfficeResumeBackend`
+2. Provision or rename the Worker to:
+- `office-resume`
+3. Provision storage and bind it to the unified Worker:
 - D1 database
 - KV namespace
-3. Configure Worker secrets and env:
+4. Configure Worker secrets and env:
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `DIRECT_APP_CALLBACK_SCHEME`
@@ -86,7 +87,9 @@ wrangler login
 Checked-in allowlist file:
 - `OfficeResumeBackend/src/free-pass-emails.js`
 
-4. Deploy and note the base URL used by the Direct app.
+5. Deploy from the repository root using `wrangler.jsonc`.
+6. Set the Direct app backend base URL to the Worker API prefix:
+- `https://officeresume.com/api`
 
 ## 5. Resend Setup (Direct Magic Links)
 1. Create a Resend account.
@@ -95,7 +98,7 @@ Checked-in allowlist file:
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 4. Ensure the Worker can send a sign-in email containing a link to:
-- `GET /auth/verify?token=...`
+- `GET /api/auth/verify?token=...`
 
 ## 6. Stripe Setup (Direct Billing)
 1. Create a Stripe account.
@@ -104,7 +107,7 @@ Checked-in allowlist file:
 - yearly: `$50/year`
 3. Configure billing portal.
 4. Create webhook endpoint to the Worker:
-- `POST /webhooks/stripe`
+- `POST /api/webhooks/stripe`
 - events:
   - `customer.subscription.created`
   - `customer.subscription.updated`
@@ -118,6 +121,9 @@ Recommended Direct app build and runtime values:
 - `OFFICE_RESUME_DIRECT_BACKEND_BASE_URL` for local Debug builds
 - Release Info.plist or build setting for the production backend base URL
 - Direct callback URL scheme matching the Worker redirect config
+
+Recommended production backend base URL:
+- `https://officeresume.com/api`
 
 Normal Direct usage flow:
 1. User installs app.

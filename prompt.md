@@ -30,7 +30,7 @@ v1 requirements:
 - OneNote: unsupported
 - 14-day trial
 - `$5/month` and `$50/year`
-- Stripe, Cloudflare Worker, and Resend for billing and auth
+- Stripe, the unified `office-resume` Cloudflare Worker, and Resend for billing and auth
 
 Capture strategy is locked:
 - `AXObserver` or Accessibility notifications are the primary capture mechanism.
@@ -54,7 +54,7 @@ Direct billing strategy is locked:
 2. Shared core module for models, adapters, storage, restore engine, account and billing abstractions, and entitlement abstraction
 3. Helper/login item process for monitoring and restore execution
 4. XPC contract between menu app and helper
-5. Cloudflare Worker backend for Direct auth, billing, and entitlement verification
+5. Unified Cloudflare Worker serving site assets plus `/api/*` backend routes for Direct auth, billing, and entitlement verification
 6. Unit and integration tests covering key scenarios from the specs
 7. Direct packaging scripts producing `.pkg` install artifacts for upgrade-friendly installs
 

@@ -216,7 +216,8 @@ Direct only:
   - yearly (`$50`)
 - 14-day trial is enforced server-side per verified user identity.
 - Email magic-link auth for entitlement retrieval.
-- Entitlement backend on Cloudflare Worker with D1/KV and Resend.
+- Entitlement backend on the unified `office-resume` Cloudflare Worker with D1/KV and Resend.
+- Static site and backend share the same Worker deployment; public API routes live under `/api/*`.
 - New purchases use Worker-hosted pricing plus Stripe Checkout Sessions after verified sign-in.
 - Existing paid subscriptions are managed through Stripe Billing Portal.
 - Backend free-pass allowlist uses verified session identity.

@@ -47,12 +47,9 @@ run_backend_tests() {
   )
 }
 
-run_site_dry_run() {
-  log_step "Running site Worker dry-run"
-  (
-    cd site
-    npx wrangler deploy --dry-run
-  )
+run_worker_dry_run() {
+  log_step "Running unified Worker dry-run"
+  npx wrangler deploy --dry-run
 }
 
 run_xcode_suite() {

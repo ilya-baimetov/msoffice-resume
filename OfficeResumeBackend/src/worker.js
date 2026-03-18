@@ -255,6 +255,25 @@ function callbackBaseURL(options) {
   return new URL(`${scheme}://${host}${path.startsWith("/") ? path : `/${path}`}`);
 }
 
+function normalizeAPIBasePath(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed || trimmed === "/") {
+    return "";
+  }
+
+  const normalized = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+}
+
+function apiPath(path, options) {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizeAPIBasePath(options.apiBasePath)}${suffix}`;
+}
+
+function apiURL(path, origin, options) {
+  return new URL(apiPath(path, options), origin);
+}
+
 function callbackURLForSession(email, sessionToken, options) {
   const url = callbackBaseURL(options);
   url.searchParams.set("sessionToken", sessionToken);
@@ -409,8 +428,9 @@ async function createStripeCheckoutSessionURL({ email, plan, trialConfig, succes
   return typeof payload.url === "string" ? payload.url : null;
 }
 
-function renderPricingPage({ entryToken, cancelled = false }) {
+function renderPricingPage({ entryToken, checkoutPath, cancelled = false }) {
   const escapedEntry = escapeHTML(entryToken);
+  const escapedCheckoutPath = escapeHTML(checkoutPath);
   const notice = cancelled
     ? '<p class="notice">Checkout was canceled. You can choose a plan again below.</p>'
     : "";
@@ -442,14 +462,14 @@ function renderPricingPage({ entryToken, cancelled = false }) {
       <p class="caption">Any remaining Direct trial time will be converted into Stripe-supported trial settings so billing starts after the unused trial window.</p>
       ${notice}
       <section class="plans">
-        <form method="POST" action="/billing/checkout">
+        <form method="POST" action="${escapedCheckoutPath}">
           <input type="hidden" name="entry" value="${escapedEntry}" />
           <input type="hidden" name="plan" value="monthly" />
           <div class="price">$5<span class="caption">/month</span></div>
           <div class="caption">Monthly subscription for Office Resume Direct.</div>
           <button type="submit">Continue with Monthly</button>
         </form>
-        <form method="POST" action="/billing/checkout">
+        <form method="POST" action="${escapedCheckoutPath}">
           <input type="hidden" name="entry" value="${escapedEntry}" />
           <input type="hidden" name="plan" value="yearly" />
           <div class="price">$50<span class="caption">/year</span></div>
@@ -1056,6 +1076,7 @@ export function createApp(store = null, options = {}) {
     stripeBillingReturnURL: options.stripeBillingReturnURL ?? options.env?.STRIPE_BILLING_RETURN_URL ?? "",
     stripePriceMonthly: options.stripePriceMonthly ?? options.env?.STRIPE_PRICE_MONTHLY ?? "",
     stripePriceYearly: options.stripePriceYearly ?? options.env?.STRIPE_PRICE_YEARLY ?? "",
+    apiBasePath: normalizeAPIBasePath(options.apiBasePath ?? options.env?.DIRECT_API_BASE_PATH ?? ""),
     emailSender: options.emailSender,
     billingPortalFactory: options.billingPortalFactory,
     checkoutSessionFactory: options.checkoutSessionFactory,
@@ -1093,7 +1114,7 @@ export function createApp(store = null, options = {}) {
       }
 
       const token = await resolvedStore.createMagicLink(email);
-      const verifyURL = new URL("/auth/verify", url.origin);
+      const verifyURL = apiURL("/auth/verify", url.origin, resolvedOptions);
       verifyURL.searchParams.set("token", token);
 
       try {
@@ -1180,7 +1201,7 @@ export function createApp(store = null, options = {}) {
       }
 
       const entryToken = await resolvedStore.createBillingEntry(email);
-      const pricingURL = new URL("/billing/pricing", url.origin);
+      const pricingURL = apiURL("/billing/pricing", url.origin, resolvedOptions);
       pricingURL.searchParams.set("entry", entryToken);
       return jsonResponse({ kind: "subscribe", title: "Choose Plan…", url: pricingURL.toString() }, 200);
     }
@@ -1205,7 +1226,14 @@ export function createApp(store = null, options = {}) {
       }
 
       const cancelled = (url.searchParams.get("cancelled") ?? "") === "1";
-      return htmlResponse(renderPricingPage({ entryToken, cancelled }), 200);
+      return htmlResponse(
+        renderPricingPage({
+          entryToken,
+          checkoutPath: apiPath("/billing/checkout", resolvedOptions),
+          cancelled,
+        }),
+        200,
+      );
     }
 
     if (request.method === "POST" && path === "/billing/checkout") {
@@ -1249,8 +1277,8 @@ export function createApp(store = null, options = {}) {
 
       const trialStart = await resolvedStore.ensureTrialStart(email);
       const trialConfig = computeStripeTrialConfig(trialStart, nowMillis());
-      const successURL = new URL("/billing/checkout/success", url.origin);
-      const cancelURL = new URL("/billing/checkout/cancel", url.origin);
+      const successURL = apiURL("/billing/checkout/success", url.origin, resolvedOptions);
+      const cancelURL = apiURL("/billing/checkout/cancel", url.origin, resolvedOptions);
       cancelURL.searchParams.set("entry", entryToken);
 
       let checkoutURL;
@@ -1308,7 +1336,7 @@ export function createApp(store = null, options = {}) {
       }
 
       const replacementEntry = await resolvedStore.createBillingEntry(entryRecord.email);
-      const pricingURL = new URL("/billing/pricing", url.origin);
+      const pricingURL = apiURL("/billing/pricing", url.origin, resolvedOptions);
       pricingURL.searchParams.set("entry", replacementEntry);
       pricingURL.searchParams.set("cancelled", "1");
       return Response.redirect(pricingURL.toString(), 302);

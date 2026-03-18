@@ -1,7 +1,7 @@
 # Backend Worker Spec (`OfficeResumeBackend`)
 
 ## Scope
-Direct-channel auth, subscription, billing-portal, and entitlement service.
+Direct-channel auth, subscription, billing-portal, and entitlement service mounted inside the unified `office-resume` Cloudflare Worker.
 
 ## Owned Files
 - `OfficeResumeBackend/src/**`
@@ -16,8 +16,21 @@ Direct-channel auth, subscription, billing-portal, and entitlement service.
 5. Support backend-authoritative free-pass allowlist.
 6. Support persistence with D1/KV, with in-memory fallback for local tests.
 7. Deliver production sign-in emails through Resend.
+8. Support deployment behind the shared Worker `/api` base path without generating broken root-relative URLs.
 
 ## Endpoint Contract
+External routes on the shared Worker:
+- `POST /api/auth/request-link`
+- `GET /api/auth/verify`
+- `GET /api/entitlements/current`
+- `GET /api/billing/entry`
+- `GET /api/billing/pricing`
+- `POST /api/billing/checkout`
+- `GET /api/billing/checkout/success`
+- `GET /api/billing/checkout/cancel`
+- `POST /api/webhooks/stripe`
+
+Internal handler contract after the Worker strips `/api`:
 - `POST /auth/request-link`
 - `GET /auth/verify`
 - `GET /entitlements/current`
@@ -63,6 +76,12 @@ Direct-channel auth, subscription, billing-portal, and entitlement service.
 - D1 tables (or equivalent model): magic links, sessions, subscriptions, trials, and short-lived billing entry tokens.
 - KV keys (or equivalent model): temporary link/session/subscription/trial/billing-entry mirrors.
 - In-memory store allowed only for local/test fallback.
+
+## Shared-Worker Routing Requirements
+- The canonical Worker name is `office-resume`.
+- Static site assets are served by the same Worker from `site/`.
+- The backend is mounted under `/api/*`.
+- Worker-generated links, form actions, and redirects must preserve the `/api` prefix externally.
 
 ## Forbidden Changes
 - Do not add analytics/event telemetry endpoints.

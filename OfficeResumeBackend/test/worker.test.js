@@ -37,7 +37,23 @@ function createMagicLinkApp(store, options = {}) {
   return { app, sent };
 }
 
-async function signInWithMagicLink(app, sent, email) {
+function backendRequestURL(externalURL, options = {}) {
+  const url = new URL(externalURL);
+  const apiBasePath = String(options.apiBasePath ?? "").trim();
+  if (!apiBasePath) {
+    return url.toString();
+  }
+
+  const normalized = apiBasePath.startsWith("/") ? apiBasePath : `/${apiBasePath}`;
+  if (url.pathname === normalized || url.pathname.startsWith(`${normalized}/`)) {
+    const suffix = url.pathname.slice(normalized.length) || "/";
+    url.pathname = suffix.startsWith("/") ? suffix : `/${suffix}`;
+  }
+
+  return url.toString();
+}
+
+async function signInWithMagicLink(app, sent, email, options = {}) {
   const linkResponse = await app(new Request("https://example.com/auth/request-link", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -51,7 +67,7 @@ async function signInWithMagicLink(app, sent, email) {
   assert.ok(sent.length > 0);
 
   const verifyURL = sent[sent.length - 1].verifyURL;
-  const verifyResponse = await app(new Request(verifyURL));
+  const verifyResponse = await app(new Request(backendRequestURL(verifyURL, options)));
   assert.equal(verifyResponse.status, 302);
   const location = verifyResponse.headers.get("location");
   const callbackURL = new URL(location);
@@ -79,6 +95,38 @@ test("request-link sends email and does not expose the raw token", async () => {
   assert.equal("debugToken" in body, false);
   assert.equal(sent.length, 1);
   assert.match(sent[0].verifyURL, /\/auth\/verify\?token=/);
+});
+
+test("api base path prefixes generated auth and billing URLs", async () => {
+  const store = new InMemoryEntitlementStore();
+  const { app, sent } = createMagicLinkApp(store, {
+    apiBasePath: "/api",
+    checkoutSessionFactory: async () => "https://checkout.stripe.com/pay/cs_test",
+  });
+
+  const { verifyBody } = await signInWithMagicLink(app, sent, "prefixed@example.com", {
+    apiBasePath: "/api",
+  });
+  assert.match(sent[0].verifyURL, /^https:\/\/example\.com\/api\/auth\/verify\?token=/);
+
+  const entryResponse = await app(new Request("https://example.com/billing/entry", {
+    method: "GET",
+    headers: { authorization: `Bearer ${verifyBody.sessionToken}` },
+  }));
+  assert.equal(entryResponse.status, 200);
+  const entryBody = await entryResponse.json();
+  assert.match(entryBody.url, /^https:\/\/example\.com\/api\/billing\/pricing\?entry=/);
+
+  const entryToken = new URL(entryBody.url).searchParams.get("entry");
+  const pricingResponse = await app(new Request(`https://example.com/billing/pricing?entry=${entryToken}`));
+  assert.equal(pricingResponse.status, 200);
+  const pricingBody = await pricingResponse.text();
+  assert.match(pricingBody, /action="\/api\/billing\/checkout"/);
+
+  await store.markBillingEntryUsed(entryToken);
+  const cancelResponse = await app(new Request(`https://example.com/billing/checkout/cancel?entry=${entryToken}`));
+  assert.equal(cancelResponse.status, 302);
+  assert.match(cancelResponse.headers.get("location"), /^https:\/\/example\.com\/api\/billing\/pricing\?entry=/);
 });
 
 test("auth flow returns a persistent 14-day trial window", async () => {
