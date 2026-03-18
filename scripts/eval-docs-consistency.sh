@@ -27,26 +27,16 @@ search_in_file() {
   fi
 }
 
-search_in_repo_with_glob() {
+search_in_files() {
   local pattern="$1"
-  local file_glob="$2"
-  if ${has_rg}; then
-    rg -q --pcre2 "$pattern" --glob "$file_glob" .
-  else
-    local matched=false
-    while IFS= read -r -d '' file; do
-      matched=true
-      if grep -Eq "$pattern" "$file"; then
-        return 0
-      fi
-    done < <(find . -type f -name "$file_glob" -print0)
-
-    if ${matched}; then
-      return 1
+  shift
+  local file
+  for file in "$@"; do
+    if [[ -f "$file" ]] && search_in_file "$pattern" "$file"; then
+      return 0
     fi
-
-    return 1
-  fi
+  done
+  return 1
 }
 
 require_file() {
@@ -81,77 +71,118 @@ forbid_pattern_in_file() {
   fi
 }
 
-forbid_pattern() {
-  local file_glob="$1"
-  local pattern="$2"
-  local label="$3"
-  if search_in_repo_with_glob "$pattern" "$file_glob"; then
+require_pattern_in_set() {
+  local pattern="$1"
+  local label="$2"
+  shift 2
+  if search_in_files "$pattern" "$@"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+forbid_pattern_in_set() {
+  local pattern="$1"
+  local label="$2"
+  shift 2
+  if search_in_files "$pattern" "$@"; then
     fail "$label"
   else
     pass "$label"
   fi
 }
 
+CANONICAL_DOCS=(
+  "AGENTS.md"
+  "intent.md"
+  "PRD.md"
+  "spec.md"
+  "specs/contracts.md"
+  "specs/core.md"
+  "specs/helper-daemon.md"
+  "specs/menu-ui.md"
+  "specs/backend-worker.md"
+  "prompt.md"
+)
+
+SUPPORTING_DOCS=(
+  "README.md"
+  "services-setup.md"
+  ".github/copilot-instructions.md"
+  "docs/direct-only-ax-decision-memo.md"
+  "docs/direct-only-ax-migration-plan.md"
+  "docs/vibe-coding-methodology.md"
+  "docs/eval-scorecard-template.md"
+)
+
+CHECK_DOCS=("${CANONICAL_DOCS[@]}" "${SUPPORTING_DOCS[@]}")
+
 echo "== Docs Consistency Checks =="
 
-require_file "AGENTS.md" "Canonical agent guide"
-require_file "PRD.md" "PRD"
-require_file "spec.md" "System spec"
-require_file "prompt.md" "Execution prompt"
-require_file "specs/contracts.md" "Shared contracts spec"
-require_file "specs/core.md" "Core component spec"
-require_file "specs/helper-daemon.md" "Helper daemon component spec"
-require_file "specs/menu-ui.md" "Menu UI component spec"
-require_file "specs/backend-worker.md" "Backend worker component spec"
-require_file "docs/vibe-coding-methodology.md" "Vibe coding methodology"
-require_file "docs/eval-scorecard-template.md" "Eval scorecard template"
-require_file ".github/copilot-instructions.md" "Copilot review instructions"
+for file in "${CANONICAL_DOCS[@]}"; do
+  require_file "$file" "Canonical doc"
+done
+
+for file in "${SUPPORTING_DOCS[@]}"; do
+  require_file "$file" "Supporting doc"
+done
+
+require_file ".github/pull_request_template.md" "Pull request template"
 
 echo
 echo "== Canonical Order Checks =="
 
-require_pattern "AGENTS.md" "## Canonical Documents \\(Precedence\\)" "AGENTS contains precedence section"
-require_pattern "AGENTS.md" "1\\. .*AGENTS\\.md" "AGENTS precedence lists AGENTS.md first"
-require_pattern "AGENTS.md" "2\\. .*PRD\\.md" "AGENTS precedence lists PRD.md"
-require_pattern "AGENTS.md" "3\\. .*spec\\.md" "AGENTS precedence lists spec.md"
-require_pattern "AGENTS.md" "6\\. .*prompt\\.md" "AGENTS precedence lists prompt.md"
+require_pattern "AGENTS.md" "## Canonical Documents \(Precedence\)" "AGENTS contains precedence section"
+require_pattern "AGENTS.md" "1\. .*AGENTS\.md" "AGENTS precedence lists AGENTS.md first"
+require_pattern "AGENTS.md" "2\. .*intent\.md" "AGENTS precedence lists intent.md"
+require_pattern "AGENTS.md" "3\. .*PRD\.md" "AGENTS precedence lists PRD.md"
+require_pattern "AGENTS.md" "4\. .*spec\.md" "AGENTS precedence lists spec.md"
+require_pattern "AGENTS.md" "7\. .*prompt\.md" "AGENTS precedence lists prompt.md"
 
 require_pattern "prompt.md" "## Mandatory First Step" "prompt contains mandatory first step"
-require_pattern "prompt.md" "1\\. .*AGENTS\\.md" "prompt requires AGENTS.md"
-require_pattern "prompt.md" "2\\. .*PRD\\.md" "prompt requires PRD.md"
-require_pattern "prompt.md" "3\\. .*spec\\.md" "prompt requires spec.md"
-require_pattern "prompt.md" "4\\. .*specs/contracts\\.md" "prompt requires specs/contracts.md"
+require_pattern "prompt.md" "1\. .*AGENTS\.md" "prompt requires AGENTS.md"
+require_pattern "prompt.md" "2\. .*intent\.md" "prompt requires intent.md"
+require_pattern "prompt.md" "3\. .*PRD\.md" "prompt requires PRD.md"
+require_pattern "prompt.md" "4\. .*spec\.md" "prompt requires spec.md"
+require_pattern "prompt.md" "5\. .*specs/contracts\.md" "prompt requires specs/contracts.md"
 
 echo
 echo "== Section Coverage Checks =="
 
-require_pattern "PRD.md" "^## 1\\. Problem Statement" "PRD has problem statement"
-require_pattern "PRD.md" "^## 5\\. Scope and Support Matrix" "PRD has support matrix"
-require_pattern "PRD.md" "^## 7\\. Functional Requirements" "PRD has functional requirements"
-require_pattern "PRD.md" "^## 12\\. Launch Criteria \\(v1\\)" "PRD has launch criteria"
+require_pattern "intent.md" "^## Why This Exists" "intent has product motivation"
+require_pattern "intent.md" "^## Product Thesis" "intent has product thesis"
+require_pattern "intent.md" "CAP-001" "intent includes capability framing"
 
-require_pattern "spec.md" "^## 6\\. Event Capture Model" "spec has event capture model"
-require_pattern "spec.md" "^## 7\\. Office Adapter Behavior" "spec has office adapter behavior"
-require_pattern "spec.md" "^## 13\\. XPC Contract Details" "spec has XPC contract"
-require_pattern "spec.md" "^## 16\\. Test Matrix" "spec has test matrix"
-require_pattern "spec.md" "Checkout Session|Checkout Sessions" "spec references Direct Checkout Sessions"
+require_pattern "PRD.md" "^## 1\. Problem Statement" "PRD has problem statement"
+require_pattern "PRD.md" "^## 5\. Scope and Support Matrix" "PRD has support matrix"
+require_pattern "PRD.md" "^## 7\. Functional Requirements" "PRD has functional requirements"
+require_pattern "PRD.md" "^## 12\. Launch Criteria \(v1\)" "PRD has launch criteria"
+
+require_pattern "spec.md" "^## 7\. Event Capture Model" "spec has event capture model"
+require_pattern "spec.md" "^## 8\. Office Adapter Behavior" "spec has office adapter behavior"
+require_pattern "spec.md" "^## 16\. XPC Contract Details" "spec has XPC contract details"
+require_pattern "spec.md" "^## 17\. Test Matrix" "spec has test matrix"
+
 require_pattern "PRD.md" "verified sign-in" "PRD requires verified sign-in for Direct billing"
+require_pattern "spec.md" "Checkout Session|Checkout Sessions" "spec references Direct Checkout Sessions"
 require_pattern "services-setup.md" "Worker-hosted pricing page|Worker-hosted pricing" "services setup documents Worker-hosted pricing"
-require_pattern "AGENTS.md" "NSWorkspace" "AGENTS documents lifecycle capture"
-require_pattern "PRD.md" "frontmost" "PRD documents frontmost refresh behavior"
-require_pattern "spec.md" "1s.*power adapter|power adapter.*1s" "spec documents 1s AC refresh cadence"
-require_pattern "spec.md" "10s.*battery|battery.*10s" "spec documents 10s battery refresh cadence"
+require_pattern "AGENTS.md" "AXObserver|Accessibility notifications" "AGENTS documents AX-first capture"
+require_pattern "PRD.md" "Accessibility: click to fix" "PRD documents Accessibility UI"
+require_pattern "spec.md" "NSWorkspace" "spec documents NSWorkspace as secondary lifecycle input"
+require_pattern "docs/direct-only-ax-decision-memo.md" "## Decision" "decision memo has explicit decision section"
+require_pattern "docs/direct-only-ax-migration-plan.md" "## Phase 0 - Contract Reset" "migration plan has phased rollout"
 
 echo
 echo "== Component Mapping Checks =="
 
-require_pattern "AGENTS.md" "specs/core\\.md" "AGENTS references core component spec"
+require_pattern "AGENTS.md" "specs/core\.md" "AGENTS references core component spec"
 require_pattern "AGENTS.md" "Sources/OfficeResumeCore/" "AGENTS maps core spec to source"
-require_pattern "AGENTS.md" "specs/helper-daemon\\.md" "AGENTS references helper component spec"
+require_pattern "AGENTS.md" "specs/helper-daemon\.md" "AGENTS references helper component spec"
 require_pattern "AGENTS.md" "Sources/OfficeResumeHelper/" "AGENTS maps helper spec to source"
-require_pattern "AGENTS.md" "specs/menu-ui\\.md" "AGENTS references menu component spec"
+require_pattern "AGENTS.md" "specs/menu-ui\.md" "AGENTS references menu component spec"
 require_pattern "AGENTS.md" "Sources/OfficeResumeDirect/" "AGENTS maps menu spec to source"
-require_pattern "AGENTS.md" "specs/backend-worker\\.md" "AGENTS references backend component spec"
+require_pattern "AGENTS.md" "specs/backend-worker\.md" "AGENTS references backend component spec"
 require_pattern "AGENTS.md" "OfficeResumeBackend/" "AGENTS maps backend spec to source"
 require_pattern "AGENTS.md" "Copilot Review Expectations" "AGENTS defines Copilot review expectations"
 require_pattern ".github/pull_request_template.md" "Copilot review URL:" "PR template includes Copilot review URL field"
@@ -159,31 +190,41 @@ require_pattern ".github/pull_request_template.md" "Copilot review URL:" "PR tem
 echo
 echo "== Bundle Prefix Drift Checks =="
 
-require_pattern "AGENTS.md" "com\\.pragprod\\.msofficeresume" "AGENTS uses current bundle prefix"
-forbid_pattern "*.md" "com\\.alemira\\.msofficeresume|com\\.ilya\\.msofficeresume" "No stale bundle prefixes in markdown docs"
+require_pattern "AGENTS.md" "com\.pragprod\.msofficeresume" "AGENTS uses current bundle prefix"
+forbid_pattern_in_set "com\.alemira\.msofficeresume|com\.ilya\.msofficeresume" "No stale bundle prefixes in checked docs" "${CHECK_DOCS[@]}"
 
-if ! search_in_repo_with_glob "com\\.pragprod\\.msofficeresume" "*.md"; then
-  warn "No bundle prefix mentions found in markdown docs"
+if ! search_in_files "com\.pragprod\.msofficeresume" "${CHECK_DOCS[@]}"; then
+  warn "No bundle prefix mentions found in checked docs"
 else
-  pass "Current bundle prefix appears in markdown docs"
+  pass "Current bundle prefix appears in checked docs"
 fi
 
 echo
 echo "== Direct Billing Drift Checks =="
 
-forbid_pattern "*.md" "STRIPE_SUBSCRIBE_URL" "No stale STRIPE_SUBSCRIBE_URL references in markdown docs"
-forbid_pattern "*.md" "Payment Link|Payment Links|shareable payment link" "No Payment Link terminology in markdown docs"
+forbid_pattern_in_set "STRIPE_SUBSCRIBE_URL" "No stale STRIPE_SUBSCRIBE_URL references in checked docs" "${CHECK_DOCS[@]}"
+forbid_pattern_in_set "Payment Link|Payment Links|shareable payment link" "No Payment Link terminology in checked docs" "${CHECK_DOCS[@]}"
 require_pattern "specs/backend-worker.md" "GET /billing/entry" "Backend spec documents billing entry endpoint"
 require_pattern "specs/backend-worker.md" "GET /billing/pricing" "Backend spec documents pricing page endpoint"
 require_pattern "specs/backend-worker.md" "POST /billing/checkout" "Backend spec documents checkout endpoint"
 require_pattern "specs/menu-ui.md" "Choose Plan" "Menu UI spec documents Choose Plan action"
-forbid_pattern_in_file "AGENTS.md" "AXObserver|Accessibility-first|prompt-accessibility" "AGENTS has no AX-specific capture contract"
-forbid_pattern_in_file "PRD.md" "AXObserver|Accessibility-first|Accessibility: click to fix|Accessibility: OK" "PRD has no AX/Accessibility UI contract"
-forbid_pattern_in_file "spec.md" "AXObserver|prompt Accessibility|Accessibility trust state" "spec has no AX-specific capture/XPC contract"
-forbid_pattern_in_file "specs/contracts.md" "AXObserver|prompt-accessibility|Accessibility trust state" "contracts spec has no AX-specific IPC/status fields"
-forbid_pattern_in_file "specs/helper-daemon.md" "AXObserver|prompt-accessibility|Accessibility trust state" "helper spec has no AX-specific runtime contract"
-forbid_pattern_in_file "specs/menu-ui.md" "Accessibility: click to fix|Accessibility: OK" "menu UI spec has no Accessibility menu row"
-forbid_pattern_in_file "prompt.md" "AXObserver|Accessibility-first" "implementation prompt has no AX-specific capture instructions"
+
+echo
+echo "== Architecture Drift Checks =="
+
+require_pattern_in_set "Accessibility: click to fix|Accessibility: OK" "Checked docs include Accessibility operational UI" \
+  "AGENTS.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/helper-daemon.md" "specs/menu-ui.md" "prompt.md"
+require_pattern_in_set "AXObserver|AX notifications|Accessibility notifications" "Checked docs include AX-first capture contract" \
+  "AGENTS.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/helper-daemon.md" "prompt.md"
+require_pattern_in_set "NSWorkspace" "Checked docs keep NSWorkspace as secondary lifecycle input" \
+  "AGENTS.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/helper-daemon.md" "prompt.md"
+
+forbid_pattern_in_set "StoreKit 2|App Store Connect" "Checked docs do not frame MAS as active v1 billing or shipping path" \
+  "intent.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/core.md" "specs/helper-daemon.md" "specs/menu-ui.md" "prompt.md" "README.md" "services-setup.md"
+forbid_pattern_in_set "app-group-first" "Checked docs do not rely on app-group-first storage as the active design" \
+  "intent.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/core.md" "specs/helper-daemon.md" "specs/menu-ui.md" "prompt.md" "README.md" "services-setup.md"
+forbid_pattern_in_set "without Accessibility dependency|no Accessibility dependency|Do not depend on Accessibility APIs" "Checked docs do not preserve the deprecated no-AX contract" \
+  "intent.md" "PRD.md" "spec.md" "specs/contracts.md" "specs/core.md" "specs/helper-daemon.md" "specs/menu-ui.md" "prompt.md" "README.md" "services-setup.md"
 
 echo
 echo "== Summary =="

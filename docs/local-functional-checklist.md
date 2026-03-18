@@ -3,8 +3,7 @@
 Use this checklist to validate local behavior end-to-end.
 
 ## Preconditions
-
-1. Build and install local dev package:
+1. Build and install the local dev package:
 - `./scripts/package-local-dev.sh`
 - `sudo ./scripts/install-local-dev.sh ./dist/OfficeResume-local-dev.pkg`
 
@@ -12,25 +11,26 @@ Use this checklist to validate local behavior end-to-end.
 - `/Applications/Office Resume.app`
 - `/Applications/Office Resume.app/Contents/Library/LoginItems/OfficeResumeHelper.app`
 
-3. Ensure menu app + helper are running.
+3. Ensure the menu app and helper are running.
 
 ## Automated Baseline
-
-- `xcodebuild ... OfficeResumeMAS ... build test`: pass
 - `xcodebuild ... OfficeResumeDirect ... build test`: pass
 - `xcodebuild ... OfficeResumeHelper ... build`: pass
 - `cd OfficeResumeBackend && npm run lint && npm test`: pass
 
-## Manual Product Validation
+Legacy note:
+- `OfficeResumeMAS` may still build during migration, but it is not part of the active shipping contract.
 
+## Manual Product Validation
 1. Menu bar and helper health
-- Open menu.
+- Open the menu.
 - Expected: no persistent helper-connection errors; actions enabled when entitlement is active.
 
-2. No Accessibility dependency
+2. Accessibility dependency
 - Relaunch Office Resume.
-- Open menu.
-- Expected: no Accessibility status row is present and no Accessibility/TCC prompt is shown.
+- Open the menu.
+- Expected: Accessibility row is present and accurately reflects current trust state.
+- Expected: after grant, the signed build does not reprompt endlessly.
 
 3. Word restore (saved docs)
 - Launch Word.
@@ -53,39 +53,40 @@ Use this checklist to validate local behavior end-to-end.
 
 7. Pause tracking
 - Toggle `Pause Tracking` on.
-- Open/close docs in Word.
+- Open and close docs in Word.
 - Expected: snapshot timestamps stop changing while paused.
 
 8. Clear snapshot
 - Click `Advanced > Clear Snapshot`.
-- Relaunch tested Office app.
+- Relaunch the tested Office app.
 - Expected: no restore until a new snapshot is captured.
 
 9. Outlook limited mode
 - Launch and quit Outlook.
 - Relaunch Outlook.
-- Expected: lifecycle behavior works; no item/window reconstruction attempted.
+- Expected: lifecycle behavior works; no item or window reconstruction attempted beyond relaunch.
 
 10. OneNote UI behavior
-- Open menu UI.
+- Open the menu.
 - Expected: no dedicated OneNote unsupported row in the menu.
 
+11. Billing and account flow
+- Open `Account…`.
+- Expected: signed-out state shows email input and sign-in action.
+- After sign-in as a non-paid user, expected: `Choose Plan…` opens Worker-hosted pricing.
+- After sign-in as a paid user, expected: `Manage Subscription` opens Billing Portal.
+
 ## Diagnostics
+Inspect local state and log files under:
+- `~/Library/Application Support/com.pragprod.msofficeresume/`
 
-Inspect local state/log files:
-
-- Primary (app-group) root:
-  - `~/Library/Group Containers/group.com.pragprod.msofficeresume/Saved Application State/`
-- Dev fallback root (unsigned local runs):
-  - `~/Library/Application Support/com.pragprod.msofficeresume/Saved Application State/`
-
-Example Word files under either root:
-
-- `com.microsoft.Word.savedState/OfficeResume/snapshot-v1.json`
-- `com.microsoft.Word.savedState/OfficeResume/events-v1.ndjson`
+Example Word files:
+- `state/com.microsoft.Word/snapshot-v1.json`
+- `state/com.microsoft.Word/events-v1.ndjson`
+- `logs/debug-v1.log`
 
 ## Pass Criteria
-
 - Automated baseline checks pass.
-- Manual checks 1-10 pass without crash/hang.
-- No duplicate restores observed in Word/Excel/PowerPoint.
+- Manual checks 1-11 pass without crash or hang.
+- No duplicate restores observed in Word, Excel, or PowerPoint.
+- No repeated Accessibility or Apple Events prompt storms are observed in the signed test build.

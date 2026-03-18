@@ -4,11 +4,12 @@ This folder contains component-scoped technical specs to keep implementation con
 
 ## Read Order
 1. `AGENTS.md`
-2. `PRD.md`
-3. `spec.md` (system-level contract)
-4. `specs/contracts.md` (cross-component interface contract)
-5. Relevant component spec(s) in this folder
-6. `prompt.md`
+2. `intent.md`
+3. `PRD.md`
+4. `spec.md` (system-level contract)
+5. `specs/contracts.md` (cross-component interface contract)
+6. relevant component spec(s) in this folder
+7. `prompt.md`
 
 ## Component Mapping
 - `specs/core.md`
@@ -16,9 +17,12 @@ This folder contains component-scoped technical specs to keep implementation con
 - `specs/helper-daemon.md`
   - Owns `Sources/OfficeResumeHelper/**`.
 - `specs/menu-ui.md`
-  - Owns `Sources/OfficeResumeDirect/**`, `Sources/OfficeResumeMAS/**`, and `Sources/MenuUIShared/**`.
+  - Owns `Sources/OfficeResumeDirect/**` and `Sources/MenuUIShared/**`.
 - `specs/backend-worker.md`
   - Owns `OfficeResumeBackend/**`.
+
+Legacy note:
+- `Sources/OfficeResumeMAS/**` may remain in the repository during migration, but it is not part of the active v1 shipping contract.
 
 ## Boundary Rule
 Component specs can add detail, but cannot contradict `spec.md` or `specs/contracts.md`.
