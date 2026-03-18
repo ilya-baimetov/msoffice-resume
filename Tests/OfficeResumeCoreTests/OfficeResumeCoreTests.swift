@@ -316,14 +316,17 @@ final class OfficeResumeCoreTests: XCTestCase {
 
     func testDebugEntitlementBypassRequiresExplicitFlag() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let defaults = makeIsolatedUserDefaults(name: "debug-bypass")
         let disabled = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
+            userDefaults: defaults,
             environment: [:]
         )
         XCTAssertNil(disabled)
 
         let enabled = DebugEntitlementBypassEvaluator.overrideState(
             now: now,
+            userDefaults: defaults,
             environment: ["OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS": "1"]
         )
 
@@ -351,6 +354,40 @@ final class OfficeResumeCoreTests: XCTestCase {
             RuntimeConfiguration.storageChannel(for: channel),
             .applicationSupport(bundlePrefix: RuntimeConfiguration.bundlePrefix)
         )
+    }
+
+    func testSharedDefaultsMigratesLegacyRuntimeFlagsIntoSharedSuite() {
+        let sharedSuiteName = "OfficeResumeTests.Shared.\(UUID().uuidString)"
+        let legacySuiteName = "OfficeResumeTests.Legacy.\(UUID().uuidString)"
+        guard let legacyDefaults = UserDefaults(suiteName: legacySuiteName) else {
+            XCTFail("Failed to create legacy defaults suite")
+            return
+        }
+
+        legacyDefaults.removePersistentDomain(forName: legacySuiteName)
+        legacyDefaults.set("direct", forKey: "com.pragprod.msofficeresume.distribution-channel")
+        legacyDefaults.set(true, forKey: "com.pragprod.msofficeresume.debug-entitlement-bypass-enabled")
+
+        let sharedDefaults = RuntimeConfiguration.sharedDefaults(
+            suiteName: sharedSuiteName,
+            legacyDomainNames: [legacySuiteName]
+        )
+
+        XCTAssertEqual(
+            RuntimeConfiguration.distributionChannel(userDefaults: sharedDefaults, environment: [:]),
+            .direct
+        )
+#if DEBUG
+        XCTAssertTrue(
+            RuntimeConfiguration.isDebugEntitlementBypassEnabled(
+                userDefaults: sharedDefaults,
+                environment: [:]
+            )
+        )
+#endif
+
+        sharedDefaults.removePersistentDomain(forName: sharedSuiteName)
+        legacyDefaults.removePersistentDomain(forName: legacySuiteName)
     }
 
     func testForceSaveUntitledPersistsRealArtifactAndIndex() async throws {
@@ -945,8 +982,16 @@ final class OfficeResumeCoreTests: XCTestCase {
         return CachedEntitlementProvider(
             store: store,
             now: now,
-            overrideEnvironment: [:]
+            overrideEnvironment: [:],
+            userDefaults: makeIsolatedUserDefaults(name: "cached-entitlement")
         )
+    }
+
+    private func makeIsolatedUserDefaults(name: String) -> UserDefaults {
+        let suiteName = "OfficeResumeTests.\(name).\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 
     private static func extractPath(fromSaveScript script: String) -> String? {

@@ -7,17 +7,33 @@ public enum DistributionChannel: String, Codable {
 
 public enum RuntimeConfiguration {
     public static let bundlePrefix = "com.pragprod.msofficeresume"
+    public static let sharedDefaultsSuiteName = "group.\(bundlePrefix)"
     private static let channelKey = "\(bundlePrefix).distribution-channel"
     private static let debugEntitlementBypassKey = "OFFICE_RESUME_ENABLE_DEBUG_ENTITLEMENT_BYPASS"
     private static let debugEntitlementBypassDefaultsKey = "\(bundlePrefix).debug-entitlement-bypass-enabled"
     private static let directBackendBaseURLEnvKey = "OFFICE_RESUME_DIRECT_BACKEND_BASE_URL"
 
-    public static func sharedDefaults() -> UserDefaults {
-        .standard
+    public static func sharedDefaults(
+        suiteName: String = sharedDefaultsSuiteName,
+        legacyDomainNames: [String]? = nil
+    ) -> UserDefaults {
+        guard let shared = UserDefaults(suiteName: suiteName) else {
+            return .standard
+        }
+
+        migrateLegacyDefaultsIfNeeded(
+            shared,
+            suiteName: suiteName,
+            legacyDomainNames: legacyDomainNames ?? defaultLegacyDefaultsDomainNames()
+        )
+        return shared
     }
 
-    public static func sharedDefaultsOrStandard() -> UserDefaults {
-        sharedDefaults()
+    public static func sharedDefaultsOrStandard(
+        suiteName: String = sharedDefaultsSuiteName,
+        legacyDomainNames: [String]? = nil
+    ) -> UserDefaults {
+        sharedDefaults(suiteName: suiteName, legacyDomainNames: legacyDomainNames)
     }
 
     public static func setDistributionChannel(_ channel: DistributionChannel, userDefaults: UserDefaults = sharedDefaults()) {
@@ -133,6 +149,51 @@ public enum RuntimeConfiguration {
             return true
         default:
             return false
+        }
+    }
+
+    private static func defaultLegacyDefaultsDomainNames(bundle: Bundle = .main) -> [String] {
+        let candidates = [
+            bundle.bundleIdentifier,
+            bundlePrefix,
+            "\(bundlePrefix).direct",
+            "\(bundlePrefix).helper",
+        ]
+
+        var unique: [String] = []
+        for candidate in candidates.compactMap({ $0 }) where !unique.contains(candidate) && candidate != sharedDefaultsSuiteName {
+            unique.append(candidate)
+        }
+        return unique
+    }
+
+    private static func migrateLegacyDefaultsIfNeeded(
+        _ shared: UserDefaults,
+        suiteName: String,
+        legacyDomainNames: [String]
+    ) {
+        let keys = [
+            channelKey,
+            debugEntitlementBypassDefaultsKey,
+        ]
+
+        var didChange = false
+        for key in keys where shared.object(forKey: key) == nil {
+            for domainName in legacyDomainNames where domainName != suiteName {
+                guard let legacy = UserDefaults(suiteName: domainName),
+                      let value = legacy.object(forKey: key)
+                else {
+                    continue
+                }
+
+                shared.set(value, forKey: key)
+                didChange = true
+                break
+            }
+        }
+
+        if didChange {
+            shared.synchronize()
         }
     }
 }
