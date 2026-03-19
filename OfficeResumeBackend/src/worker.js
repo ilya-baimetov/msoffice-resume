@@ -663,36 +663,17 @@ export class D1KVEntitlementStore {
     }
 
     this.schemaAttempted = true;
-    await this.d1.exec(`
-      CREATE TABLE IF NOT EXISTS magic_links (
-        token TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS sessions (
-        token TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS subscriptions (
-        email TEXT PRIMARY KEY,
-        status TEXT NOT NULL,
-        plan TEXT NOT NULL,
-        valid_until TEXT,
-        trial_ends_at TEXT,
-        customer_id TEXT
-      );
-      CREATE TABLE IF NOT EXISTS trials (
-        email TEXT PRIMARY KEY,
-        started_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS billing_entries (
-        token TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        expires_at INTEGER NOT NULL,
-        used_at INTEGER
-      );
-    `);
+    const schemaStatements = [
+      "CREATE TABLE IF NOT EXISTS magic_links (token TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at INTEGER NOT NULL);",
+      "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL);",
+      "CREATE TABLE IF NOT EXISTS subscriptions (email TEXT PRIMARY KEY, status TEXT NOT NULL, plan TEXT NOT NULL, valid_until TEXT, trial_ends_at TEXT, customer_id TEXT);",
+      "CREATE TABLE IF NOT EXISTS trials (email TEXT PRIMARY KEY, started_at INTEGER NOT NULL);",
+      "CREATE TABLE IF NOT EXISTS billing_entries (token TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER);",
+    ];
+
+    for (const statement of schemaStatements) {
+      await this.d1.exec(statement);
+    }
     this.schemaReady = true;
   }
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createApp, InMemoryEntitlementStore } from "../src/worker.js";
+import { createApp, D1KVEntitlementStore, InMemoryEntitlementStore } from "../src/worker.js";
 
 function hex(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -470,4 +470,31 @@ test("magic link verify endpoint redirects to app callback URL", async () => {
   assert.match(location, /^officeresume-direct:\/\/auth\/complete\?/);
   assert.match(location, /sessionToken=/);
   assert.match(location, /email=callback%40example.com/);
+});
+
+test("d1 schema bootstrap executes individual create table statements", async () => {
+  const executed = [];
+  const d1 = {
+    async exec(statement) {
+      executed.push(String(statement).trim());
+    },
+    prepare() {
+      return {
+        bind() {
+          return {
+            async run() {
+              return { success: true };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const store = new D1KVEntitlementStore({ d1 });
+  await store.createMagicLink("d1@example.com");
+
+  assert.equal(executed.length, 5);
+  assert.match(executed[0], /^CREATE TABLE IF NOT EXISTS magic_links/);
+  assert.match(executed[4], /^CREATE TABLE IF NOT EXISTS billing_entries/);
 });

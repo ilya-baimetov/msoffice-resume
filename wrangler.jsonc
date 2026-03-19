@@ -2,6 +2,19 @@
   "name": "office-resume",
   "main": "./worker.js",
   "compatibility_date": "2026-03-18",
+  "d1_databases": [
+    {
+      "binding": "ENTITLEMENTS_DB",
+      "database_name": "office-resume-entitlements",
+      "database_id": "3526511a-8503-4e98-ab68-313c40db0c22"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "ENTITLEMENTS_KV",
+      "id": "ad365ae1d40441d597526a3d94747372"
+    }
+  ],
   "assets": {
     "directory": "./site",
     "binding": "ASSETS",
